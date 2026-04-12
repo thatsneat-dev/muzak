@@ -254,12 +254,12 @@ func main() {
 				}
 				flashIcon = "play"
 				redrawControls()
-				flashTimer.Reset(500 * time.Millisecond)
+				safeReset(flashTimer, 500*time.Millisecond)
 			case 'l':
 				go music.NextTrack(ctx)
 				flashIcon = "next"
 				redrawControls()
-				flashTimer.Reset(500 * time.Millisecond)
+				safeReset(flashTimer, 500*time.Millisecond)
 			case 'h':
 				if latestInfo != nil && latestInfo.Position > restartThreshold {
 					go music.RestartTrack(ctx)
@@ -268,21 +268,21 @@ func main() {
 				}
 				flashIcon = "prev"
 				redrawControls()
-				flashTimer.Reset(500 * time.Millisecond)
+				safeReset(flashTimer, 500*time.Millisecond)
 			case 'j':
 				_ = volume.Down()
 				flashIcon = "voldn"
 				if hasArtwork {
 					drawVolumeBar(flashIcon)
 				}
-				flashTimer.Reset(500 * time.Millisecond)
+				safeReset(flashTimer, 500*time.Millisecond)
 			case 'k':
 				_ = volume.Up()
 				flashIcon = "volup"
 				if hasArtwork {
 					drawVolumeBar(flashIcon)
 				}
-				flashTimer.Reset(500 * time.Millisecond)
+				safeReset(flashTimer, 500*time.Millisecond)
 			case 'q', 3: // 'q' or Ctrl+C
 				if spaceAllocated {
 					fmt.Fprint(out, "\x1b8")
@@ -291,7 +291,7 @@ func main() {
 				return
 			}
 			// Schedule a refresh to pick up the new state.
-			refresh.Reset(300 * time.Millisecond)
+			safeReset(refresh, 300*time.Millisecond)
 		case <-flashTimer.C:
 			wasVol := flashIcon == "volup" || flashIcon == "voldn"
 			flashIcon = ""
@@ -366,6 +366,18 @@ func formatDuration(seconds float64) string {
 	m := (total % 3600) / 60
 	s := total % 60
 	return fmt.Sprintf("%02d:%02d:%02d", h, m, s)
+}
+
+// safeReset stops the timer, drains any pending event, and resets it.
+// This avoids stale timer fires per the time.Timer.Reset documentation.
+func safeReset(t *time.Timer, d time.Duration) {
+	if !t.Stop() {
+		select {
+		case <-t.C:
+		default:
+		}
+	}
+	t.Reset(d)
 }
 
 // drawText writes all text lines into the display area, positioned beside
