@@ -268,14 +268,14 @@ func main() {
 				redrawControls()
 				flashTimer.Reset(500 * time.Millisecond)
 			case 'j':
-				volume.Down()
+				_ = volume.Down()
 				flashIcon = "voldn"
 				if hasArtwork {
 					drawVolumeBar(flashIcon)
 				}
 				flashTimer.Reset(500 * time.Millisecond)
 			case 'k':
-				volume.Up()
+				_ = volume.Up()
 				flashIcon = "volup"
 				if hasArtwork {
 					drawVolumeBar(flashIcon)
@@ -412,7 +412,7 @@ func updateDynamicLines(lines []string, withArtwork bool) {
 // drawVolumeBar renders a vertical volume indicator to the left of the artwork,
 // with a high icon at the top and an off icon at the bottom.
 func drawVolumeBar(flash string) {
-	vol := volume.Get()
+	vol, _ := volume.Get()
 	barRows := artworkRows - 2 // reserve top and bottom for icons
 	filled := int(vol*float32(barRows) + 0.5)
 	if filled > barRows {
