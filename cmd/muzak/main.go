@@ -240,7 +240,9 @@ func main() {
 			return
 		case result := <-pollCh:
 			pollRunning = false
-			if result.err == nil {
+			if result.err != nil {
+				fmt.Fprintf(os.Stderr, "muzak: poll: %v\r\n", result.err)
+			} else {
 				handlePoll(result.info)
 			}
 		case key := <-keys:
