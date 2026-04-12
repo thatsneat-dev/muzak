@@ -73,22 +73,37 @@ func ParseResponse(data []byte) (*TrackInfo, error) {
 	}, nil
 }
 
+// runCommand executes a single-line AppleScript, capturing stderr for
+// actionable error messages on failure.
+func runCommand(ctx context.Context, script string) error {
+	cmd := exec.CommandContext(ctx, "osascript", "-e", script)
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("osascript: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+
+	return nil
+}
+
 // PlayPause toggles playback in Music.app.
 func PlayPause(ctx context.Context) error {
-	return exec.CommandContext(ctx, "osascript", "-e", `tell application "Music" to playpause`).Run()
+	return runCommand(ctx, `tell application "Music" to playpause`)
 }
 
 // NextTrack skips to the next track in Music.app.
 func NextTrack(ctx context.Context) error {
-	return exec.CommandContext(ctx, "osascript", "-e", `tell application "Music" to next track`).Run()
+	return runCommand(ctx, `tell application "Music" to next track`)
 }
 
 // PreviousTrack goes to the previous track in Music.app.
 func PreviousTrack(ctx context.Context) error {
-	return exec.CommandContext(ctx, "osascript", "-e", `tell application "Music" to previous track`).Run()
+	return runCommand(ctx, `tell application "Music" to previous track`)
 }
 
 // RestartTrack seeks to the beginning of the current track in Music.app.
 func RestartTrack(ctx context.Context) error {
-	return exec.CommandContext(ctx, "osascript", "-e", `tell application "Music" to set player position to 0`).Run()
+	return runCommand(ctx, `tell application "Music" to set player position to 0`)
 }
