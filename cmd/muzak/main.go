@@ -107,6 +107,7 @@ func main() {
 	pollCh := make(chan pollResult, 1)
 
 	allocateSpace := func() {
+		fmt.Fprint(out, "\x1b[2J\x1b[H") // clear screen and move cursor to top-left
 		for range displayRows {
 			fmt.Fprint(out, "\r\n")
 		}
