@@ -74,9 +74,9 @@ func main() {
 	tmp.Close()
 	defer os.Remove(artworkPath)
 
-	// Hide cursor while running.
-	fmt.Fprint(out, "\x1b[?25l")
-	defer fmt.Fprint(out, "\x1b[?25h")
+	// Switch to alternate screen buffer and hide cursor while running.
+	fmt.Fprint(out, "\x1b[?1049h\x1b[?25l")
+	defer fmt.Fprint(out, "\x1b[?25h\x1b[?1049l")
 
 	// Read keypresses in the background.
 	keys := make(chan byte, 10)
