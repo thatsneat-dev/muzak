@@ -1,4 +1,7 @@
-package music
+//go:build darwin && cgo
+
+// Package volume provides direct system audio volume control via macOS CoreAudio.
+package volume
 
 /*
 #cgo LDFLAGS: -framework CoreAudio
@@ -63,19 +66,25 @@ static void setVolume(float volume) {
 */
 import "C"
 
-const volumeStep = 0.05 // 5% per press
+// volumeStep is the fraction of full volume changed per key press (5%).
+const volumeStep = 0.05
 
-// GetVolume returns the current system output volume (0.0–1.0).
-func GetVolume() float32 {
+// Get returns the current system output volume (0.0–1.0).
+func Get() float32 {
 	return float32(C.getVolume())
 }
 
-// VolumeUp increases system output volume by 5%.
-func VolumeUp() {
-	C.setVolume(C.float(float32(C.getVolume()) + volumeStep))
+// Set sets the system output volume to an exact value (0.0–1.0).
+func Set(v float32) {
+	C.setVolume(C.float(v))
 }
 
-// VolumeDown decreases system output volume by 5%.
-func VolumeDown() {
-	C.setVolume(C.float(float32(C.getVolume()) - volumeStep))
+// Up increases the system output volume by 5%.
+func Up() {
+	Set(Get() + volumeStep)
+}
+
+// Down decreases the system output volume by 5%.
+func Down() {
+	Set(Get() - volumeStep)
 }

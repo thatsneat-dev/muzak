@@ -36,11 +36,15 @@ A live Apple Music now-playing widget for terminals that support the [Kitty grap
 muzak/
 ├── cmd/muzak/
 │   └── main.go                  # Entry point, display loop, key handling
-├── internal/music/
-│   ├── music.go                 # NowPlaying via embedded AppleScript, playback controls
-│   ├── now_playing.applescript  # AppleScript: track metadata, artwork, player state
-│   └── volume.go               # System volume via cgo + CoreAudio
+├── internal/
+│   ├── music/
+│   │   ├── music.go                 # NowPlaying via embedded AppleScript, playback controls
+│   │   └── now_playing.applescript  # AppleScript: track metadata, artwork, player state
+│   └── volume/
+│       └── volume.go                # System volume via cgo + CoreAudio
 ├── ref/                         # Reference AppleScript snippets
+├── justfile                     # Development task runner
+├── VERSION                      # Semver version source of truth
 ├── flake.nix                    # Nix flake for dev shell and package
 ├── go.mod
 └── go.sum
@@ -71,8 +75,22 @@ go install github.com/thatsneat-dev/muzak/cmd/muzak@latest
 ```sh
 git clone https://github.com/thatsneat-dev/muzak.git
 cd muzak
-go build -o muzak ./cmd/muzak
-./muzak
+just build
+./bin/muzak
+```
+
+## Development
+
+```sh
+nix develop         # enter dev shell with all tools
+just                # list available recipes
+just build          # build with version injection
+just fmt            # format Go + Nix code
+just lint           # golangci-lint + statix + deadnix
+just test           # go test -race
+just vuln           # govulncheck
+just check          # run all checks
+just bump patch     # bump version (patch|minor|major)
 ```
 
 ## License

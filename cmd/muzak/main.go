@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/thatsneat-dev/muzak/internal/music"
+	"github.com/thatsneat-dev/muzak/internal/volume"
 	"golang.org/x/term"
 )
 
@@ -27,11 +28,13 @@ const (
 	padTop  = 1 // blank lines above artwork
 	padLeft = 2 // columns from left edge
 
-	volBarWidth = 1 // column width of volume bar
-	volBarGap   = 2 // gap between volume bar and artwork
+	volBarWidth = 1                                 // column width of volume bar
+	volBarGap   = 2                                 // gap between volume bar and artwork
 	artworkLeft = padLeft + volBarWidth + volBarGap // artwork start column
 
 	displayRows = padTop + artworkRows // total rows reserved
+
+	numTextLines = 5 // track name, artist/album, position, progress bar, controls
 
 	// Nerd Font icons.
 	iconPrev  = "\U000F04AE" // 󰒮 nf-md-skip_previous
@@ -46,6 +49,9 @@ const (
 )
 
 var out = os.Stdout
+
+// version is set at build time via -ldflags "-X main.version=...".
+var version = "dev"
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -124,10 +130,14 @@ func main() {
 		if pollRunning {
 			return
 		}
+		os.Truncate(artworkPath, 0)
 		pollRunning = true
 		go func() {
 			info, err := music.NowPlaying(ctx, artworkPath)
-			pollCh <- pollResult{info, err}
+			select {
+			case pollCh <- pollResult{info, err}:
+			case <-ctx.Done():
+			}
 		}()
 	}
 
@@ -204,9 +214,8 @@ func main() {
 		if latestInfo == nil {
 			return
 		}
-		totalLines := 5 // number of lines from buildLines
-		startRow := padTop + (artworkRows-totalLines)/2
-		controlRow := startRow + totalLines - 1
+		startRow := padTop + (artworkRows-numTextLines)/2
+		controlRow := startRow + numTextLines - 1
 		colOffset := padLeft
 		if hasArtwork {
 			colOffset = artworkLeft + artworkCols + 2
@@ -259,14 +268,14 @@ func main() {
 				redrawControls()
 				flashTimer.Reset(500 * time.Millisecond)
 			case 'j':
-				music.VolumeDown()
+				volume.Down()
 				flashIcon = "voldn"
 				if hasArtwork {
 					drawVolumeBar(flashIcon)
 				}
 				flashTimer.Reset(500 * time.Millisecond)
 			case 'k':
-				music.VolumeUp()
+				volume.Up()
 				flashIcon = "volup"
 				if hasArtwork {
 					drawVolumeBar(flashIcon)
@@ -297,6 +306,7 @@ func main() {
 	}
 }
 
+// buildLines constructs the five display lines for the current track.
 func buildLines(info *music.TrackInfo, flash string) []string {
 	return []string{
 		"\x1b[1m" + info.Name + "\x1b[0m",
@@ -307,9 +317,12 @@ func buildLines(info *music.TrackInfo, flash string) []string {
 	}
 }
 
-const yellow = "\x1b[33m"
-const reset = "\x1b[0m"
+const (
+	yellow = "\x1b[33m"
+	reset  = "\x1b[0m"
+)
 
+// controlsLine renders the playback control icons, highlighting the active one during a flash.
 func controlsLine(playing bool, flash string) string {
 	prev := iconPrev
 	if flash == "prev" {
@@ -332,6 +345,7 @@ func controlsLine(playing bool, flash string) string {
 	return prev + "  " + pp + "  " + next
 }
 
+// progressBar returns a text-based progress bar of the given width using filled and empty segments.
 func progressBar(position, duration float64, width int) string {
 	if duration <= 0 {
 		return strings.Repeat("─", width)
@@ -343,6 +357,7 @@ func progressBar(position, duration float64, width int) string {
 	return strings.Repeat("━", filled) + strings.Repeat("─", width-filled)
 }
 
+// formatDuration converts seconds to HH:MM:SS format.
 func formatDuration(seconds float64) string {
 	total := int(seconds)
 	h := total / 3600
@@ -397,7 +412,7 @@ func updateDynamicLines(lines []string, withArtwork bool) {
 // drawVolumeBar renders a vertical volume indicator to the left of the artwork,
 // with a high icon at the top and an off icon at the bottom.
 func drawVolumeBar(flash string) {
-	vol := music.GetVolume()
+	vol := volume.Get()
 	barRows := artworkRows - 2 // reserve top and bottom for icons
 	filled := int(vol*float32(barRows) + 0.5)
 	if filled > barRows {

@@ -48,8 +48,14 @@ func NowPlaying(ctx context.Context, artworkPath string) (*TrackInfo, error) {
 		return nil, fmt.Errorf("osascript: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 
+	return ParseResponse(stdout.Bytes())
+}
+
+// ParseResponse unmarshals the JSON output from the AppleScript
+// and returns a TrackInfo, or nil when playback is stopped.
+func ParseResponse(data []byte) (*TrackInfo, error) {
 	var raw rawResponse
-	if err := json.Unmarshal(bytes.TrimSpace(stdout.Bytes()), &raw); err != nil {
+	if err := json.Unmarshal(bytes.TrimSpace(data), &raw); err != nil {
 		return nil, fmt.Errorf("parsing track info: %w", err)
 	}
 

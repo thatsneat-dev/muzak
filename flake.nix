@@ -20,15 +20,21 @@
         self',
         pkgs,
         ...
-      }: {
+      }: let
+        version = pkgs.lib.fileContents ./VERSION;
+      in {
         packages.muzak = pkgs.buildGoModule {
           pname = "muzak";
-          version = "0.1.0";
+          inherit version;
           src = ./.;
 
           vendorHash = null;
 
           subPackages = ["cmd/muzak"];
+
+          ldflags = [
+            "-X main.version=${version}"
+          ];
 
           meta = {
             description = "Apple Music now-playing terminal widget";
@@ -42,6 +48,7 @@
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
             go
+            just
             gofumpt
             gotools
             golangci-lint
