@@ -17,6 +17,11 @@ on run argv
 	set trackName to nowPlayingItem's title()
 	set trackDuration to nowPlayingItem's playbackDuration()
 
+	if trackArtist is missing value then set trackArtist to ""
+	if trackAlbum is missing value then set trackAlbum to ""
+	if trackName is missing value then set trackName to ""
+	if trackDuration is missing value then set trackDuration to 0
+
 	-- Get live playback position and player state from Music.app
 	-- (MPMusicPlayerController's currentPlaybackTime does not work correctly on macOS).
 	tell application "Music"
