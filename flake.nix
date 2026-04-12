@@ -28,7 +28,7 @@
           inherit version;
           src = ./.;
 
-          vendorHash = null;
+          vendorHash = "sha256-MfLqBb2Z3R3uRUOvcVhBeyUHTA9NtJ/sL+GTgojo6Ik=";
 
           subPackages = ["cmd/muzak"];
 
