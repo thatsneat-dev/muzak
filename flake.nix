@@ -23,6 +23,7 @@
       }: let
         version = pkgs.lib.fileContents ./VERSION;
       in {
+        packages.default = self'.packages.muzak;
         packages.muzak = pkgs.buildGoModule {
           pname = "muzak";
           inherit version;
