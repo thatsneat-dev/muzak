@@ -78,6 +78,11 @@ func main() {
 	fmt.Fprint(out, "\x1b[?1049h\x1b[?25l")
 	defer fmt.Fprint(out, "\x1b[?25h\x1b[?1049l")
 
+	// Listen for terminal resize signals.
+	winch := make(chan os.Signal, 1)
+	signal.Notify(winch, syscall.SIGWINCH)
+	defer signal.Stop(winch)
+
 	// Read keypresses in the background.
 	keys := make(chan byte, 10)
 	go func() {
@@ -301,6 +306,13 @@ func main() {
 			} else {
 				redrawControls()
 			}
+		case <-winch:
+			// Terminal was resized — force a full redraw.
+			currentTrack = ""
+			spaceAllocated = false
+			hasArtwork = false
+			allocateSpace()
+			startPoll()
 		case <-refresh.C:
 			startPoll()
 		case <-ticker.C:
