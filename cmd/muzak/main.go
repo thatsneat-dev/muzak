@@ -172,7 +172,7 @@ func main() {
 	}()
 
 	// overlayMode tracks whether we're showing an overlay.
-	// "" = normal now-playing view, "queue" = queue list.
+	// "" = normal now-playing view, "queue" = queue list, "browse" = browse modal.
 	var overlayMode string
 
 	const queueVisible = 5 // max queue tracks visible at once
@@ -191,6 +191,9 @@ func main() {
 		queueLoading   bool
 		spinnerFrame   int
 		forceRedraw    bool // next poll result redraws even during overlay
+
+		browse            browseState
+		autoBrowsePending = true // auto-open browse on first nil poll
 	)
 
 	spinnerChars := [4]string{"⠋", "⠙", "⠹", "⠸"}
@@ -315,17 +318,22 @@ func main() {
 		}()
 	}
 
+	noTrackLines := []string{
+		"No track is currently playing.",
+		"\x1b[2mPress b to browse, or start a track in Music.\x1b[0m",
+	}
+
 	// handlePoll processes an async poll result and updates the display.
 	handlePoll := func(info *music.TrackInfo) {
 		if info == nil {
 			if currentTrack != "" {
 				clearDisplay()
-				drawText([]string{"No track is currently playing."}, false)
+				drawText(noTrackLines, false)
 				currentTrack = ""
 				hasArtwork = false
 			} else if !spaceAllocated {
 				allocateSpace()
-				drawText([]string{"No track is currently playing."}, false)
+				drawText(noTrackLines, false)
 			}
 			return
 		}
@@ -364,6 +372,9 @@ func main() {
 		}
 	}
 
+	// Launch Music.app in the background (does not steal focus).
+	go music.Launch(ctx)
+
 	// Fetch initial playback option state.
 	if on, err := music.ShuffleEnabled(ctx); err == nil {
 		shuffleOn = on
@@ -397,18 +408,92 @@ func main() {
 	// queueCh delivers queue results from the background fetch.
 	queueCh := make(chan []music.QueueTrack, 1)
 
+	// Browse modal channels.
+	playlistsCh := make(chan []music.Playlist, 1)
+	albumsCh := make(chan []music.Album, 1)
+	albumTracksCh := make(chan struct {
+		key    string
+		tracks []music.AlbumTrack
+	}, 1)
+
+	// openBrowse initialises the browse modal and begins loading playlists.
+	openBrowse := func(auto bool) {
+		overlayMode = "browse"
+		browse = browseState{
+			Screen:          browseRoot,
+			AlbumTrackCache: browse.AlbumTrackCache,
+			Albums:          browse.Albums,
+			AlbumsLoaded:    browse.AlbumsLoaded,
+			AutoOpened:      auto,
+		}
+		if browse.AlbumTrackCache == nil {
+			browse.AlbumTrackCache = make(map[string][]music.AlbumTrack)
+		}
+		spinnerFrame = 0
+		spinnerTicker.Reset(100 * time.Millisecond)
+		if !spaceAllocated {
+			allocateSpace()
+		}
+		drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+	}
+
+	// fetchPlaylists starts loading playlists in the background.
+	fetchPlaylists := func() {
+		if browse.PlaylistsLoading {
+			return
+		}
+		browse.PlaylistsLoading = true
+		go func() {
+			items, _ := music.ListPlaylists(ctx)
+			playlistsCh <- items
+		}()
+	}
+
+	// fetchAlbums starts loading albums in the background.
+	fetchAlbums := func() {
+		if browse.AlbumsLoading || browse.AlbumsLoaded {
+			return
+		}
+		browse.AlbumsLoading = true
+		go func() {
+			items, _ := music.ListAlbums(ctx)
+			albumsCh <- items
+		}()
+	}
+
+	// fetchAlbumTracks starts loading tracks for the selected album.
+	fetchAlbumTracks := func(album *music.Album) {
+		if browse.TracksLoading {
+			return
+		}
+		key := albumCacheKey(album.Name, album.AlbumArtist)
+		if cached, ok := browse.AlbumTrackCache[key]; ok {
+			browse.AlbumTracks = cached
+			return
+		}
+		browse.TracksLoading = true
+		name, artist := album.Name, album.AlbumArtist
+		go func() {
+			items, _ := music.ListAlbumTracks(ctx, name, artist)
+			albumTracksCh <- struct {
+				key    string
+				tracks []music.AlbumTrack
+			}{key, items}
+		}()
+	}
+
 	// exitOverlay returns to the normal now-playing view,
 	// redrawing only the text area that the modal overwrote.
 	exitOverlay := func() {
 		overlayMode = ""
 		queueLoading = false
 		spinnerTicker.Stop()
-		// Clear all rows in the text column area.
+		// Clear all rows in the text column area (plus hint line below modal).
 		colOffset := padLeft
 		if hasArtwork {
 			colOffset = artworkLeft + artworkCols + 2
 		}
-		for i := range displayRows {
+		for i := range displayRows + 2 {
 			fmt.Fprint(out, "\x1b8")
 			if i > 0 {
 				fmt.Fprintf(out, "\x1b[%dB", i)
@@ -421,6 +506,11 @@ func main() {
 		if latestInfo != nil {
 			lines := buildLines(latestInfo, flashIcon, hasArtwork, shuffleOn, repeatMode)
 			drawText(lines, hasArtwork)
+		} else {
+			drawText([]string{
+				"No track is currently playing.",
+				"\x1b[2mPress b to browse, or start a track in Music.\x1b[0m",
+			}, false)
 		}
 	}
 
@@ -461,12 +551,25 @@ func main() {
 				}
 			} else {
 				latestInfo = result.info
-				if overlayMode == "" || forceRedraw {
+				// Auto-open browse on first successful nil poll.
+				if autoBrowsePending && result.info == nil {
+					autoBrowsePending = false
 					handlePoll(result.info)
-					if forceRedraw && overlayMode == "queue" {
-						drawQueue()
+					openBrowse(true)
+				} else {
+					if autoBrowsePending && result.info != nil {
+						autoBrowsePending = false
 					}
-					forceRedraw = false
+					if overlayMode == "" || forceRedraw {
+						handlePoll(result.info)
+						if forceRedraw && overlayMode == "queue" {
+							drawQueue()
+						}
+						if forceRedraw && overlayMode == "browse" {
+							drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+						}
+						forceRedraw = false
+					}
 				}
 			}
 		case key := <-keys:
@@ -503,6 +606,76 @@ func main() {
 					if queueScroll > 0 {
 						queueScroll--
 						drawQueue()
+					}
+				}
+				continue
+			}
+
+			if overlayMode == "browse" {
+				switch key {
+				case 'q', 27: // q or Escape
+					if browse.Screen == browseRoot {
+						exitOverlay()
+					} else {
+						browse.Screen = browseRoot
+						drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+					}
+				case 'h':
+					switch browse.Screen {
+					case browseRoot:
+						exitOverlay()
+					case browsePlaylists, browseAlbums:
+						browse.Screen = browseRoot
+						drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+					case browseAlbumTracks:
+						browse.Screen = browseAlbums
+						drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+					}
+				case 'j':
+					browseMoveCursor(&browse, 1)
+					drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+				case 'k':
+					browseMoveCursor(&browse, -1)
+					drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+				case '\r', '\n', 'l':
+					switch browse.Screen {
+					case browseRoot:
+						switch browse.RootView.Cursor {
+						case rootItemPlaylists:
+							browse.Screen = browsePlaylists
+							browse.PlaylistsView = listState{}
+							fetchPlaylists()
+							drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+						case rootItemLibrary:
+							browse.Screen = browseAlbums
+							browse.AlbumsView = listState{}
+							fetchAlbums()
+							drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+						}
+					case browsePlaylists:
+						if !browse.PlaylistsLoading && len(browse.Playlists) > 0 {
+							p := browse.Playlists[browse.PlaylistsView.Cursor]
+							go music.PlayPlaylist(ctx, p.PersistentID)
+							exitOverlay()
+							safeReset(refresh, 500*time.Millisecond)
+						}
+					case browseAlbums:
+						if !browse.AlbumsLoading && len(browse.Albums) > 0 {
+							a := browse.Albums[browse.AlbumsView.Cursor]
+							browse.SelectedAlbum = &a
+							browse.Screen = browseAlbumTracks
+							browse.TracksView = listState{}
+							browse.AlbumTracks = nil
+							fetchAlbumTracks(&a)
+							drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+						}
+					case browseAlbumTracks:
+						if !browse.TracksLoading && browse.SelectedAlbum != nil {
+							a := browse.SelectedAlbum
+							go music.PlayAlbum(ctx, a.Name, a.AlbumArtist)
+							exitOverlay()
+							safeReset(refresh, 500*time.Millisecond)
+						}
 					}
 				}
 				continue
@@ -571,6 +744,8 @@ func main() {
 					tracks, _ := music.Queue(ctx)
 					queueCh <- tracks
 				}()
+			case 'b':
+				openBrowse(false)
 			}
 			// Schedule a refresh to pick up the new state.
 			safeReset(refresh, 300*time.Millisecond)
@@ -583,9 +758,12 @@ func main() {
 				redrawControls()
 			}
 		case <-spinnerTicker.C:
+			spinnerFrame++
 			if queueLoading && overlayMode == "queue" {
-				spinnerFrame++
 				drawQueue()
+			}
+			if browse.isLoading() && overlayMode == "browse" {
+				drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
 			}
 		case tracks := <-queueCh:
 			queueLoading = false
@@ -595,6 +773,33 @@ func main() {
 			}
 			if overlayMode == "queue" {
 				drawQueue()
+			}
+		case items := <-playlistsCh:
+			browse.PlaylistsLoading = false
+			browse.PlaylistsLoaded = true
+			if items != nil {
+				browse.Playlists = items
+			}
+			if overlayMode == "browse" {
+				drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+			}
+		case items := <-albumsCh:
+			browse.AlbumsLoading = false
+			browse.AlbumsLoaded = true
+			if items != nil {
+				browse.Albums = items
+			}
+			if overlayMode == "browse" {
+				drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+			}
+		case result := <-albumTracksCh:
+			browse.TracksLoading = false
+			if result.tracks != nil {
+				browse.AlbumTracks = result.tracks
+				browse.AlbumTrackCache[result.key] = result.tracks
+			}
+			if overlayMode == "browse" {
+				drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
 			}
 		case <-winch:
 			// Terminal was resized — recalculate layout and force a full redraw.

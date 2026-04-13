@@ -10,6 +10,8 @@ A live Apple Music now-playing widget for terminals that support the [Kitty grap
 - **System volume control** via CoreAudio (instant, no osascript overhead)
 - **Vertical volume bar** with nerd font icons
 - **Visual feedback** — control icons flash yellow on keypress
+- **Browse modal** — browse and play playlists or albums from your library
+- **Auto-launch** — launches Apple Music on startup; opens browse if nothing is playing
 - **Non-blocking architecture** — input is always responsive, polling runs in the background
 
 ## Keybindings
@@ -21,6 +23,7 @@ A live Apple Music now-playing widget for terminals that support the [Kitty grap
 | `space` | Toggle play/pause |
 | `k` | Volume up |
 | `j` | Volume down |
+| `b` | Browse playlists and library |
 | `q` | Quit |
 
 ## Requirements
@@ -35,11 +38,18 @@ A live Apple Music now-playing widget for terminals that support the [Kitty grap
 ```
 muzak/
 ├── cmd/muzak/
-│   └── main.go                  # Entry point, display loop, key handling
+│   ├── main.go                      # Entry point, display loop, key handling
+│   └── browse.go                    # Browse modal state machine and rendering
 ├── internal/
 │   ├── music/
 │   │   ├── music.go                 # NowPlaying via embedded AppleScript, playback controls
-│   │   └── now_playing.applescript  # AppleScript: track metadata, artwork, player state
+│   │   ├── browse.go                # Library browsing: playlists, albums, playback
+│   │   ├── now_playing.applescript  # AppleScript: track metadata, artwork, player state
+│   │   ├── list_playlists.applescript
+│   │   ├── list_albums.applescript
+│   │   ├── list_album_tracks.applescript
+│   │   ├── play_playlist.applescript
+│   │   └── play_album.applescript
 │   └── volume/
 │       └── volume.go                # System volume via cgo + CoreAudio
 ├── ref/                         # Reference AppleScript snippets

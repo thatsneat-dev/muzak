@@ -2,9 +2,9 @@
 
 ## new features
 
-- [ ] Add a way to start playing music when there is nothing playing & Apple
+- [x] Add a way to start playing music when there is nothing playing & Apple
       Music is closed.
-- [ ] Add a way to navigate not only songs within an album/playlist, but your
+- [x] Add a way to navigate not only songs within an album/playlist, but your
       library:
   - Playlist navigation
   - Library navigation
