@@ -193,7 +193,7 @@ func main() {
 		forceRedraw    bool // next poll result redraws even during overlay
 	)
 
-	spinnerChars := [4]string{"◐", "◓", "◑", "◒"}
+	spinnerChars := [4]string{"⠋", "⠙", "⠹", "⠸"}
 
 	type pollResult struct {
 		info *music.TrackInfo
