@@ -21,18 +21,16 @@ import (
 )
 
 const (
-	artworkCols = 20
-	artworkRows = 10
-	barWidth    = 30
+	defaultArtworkCols = 20
+	defaultArtworkRows = 10
+	barWidth           = 30
 
 	padTop  = 1 // blank lines above artwork
 	padLeft = 2 // columns from left edge
 
-	volBarWidth = 1                                 // column width of volume bar
-	volBarGap   = 2                                 // gap between volume bar and artwork
+	volBarWidth = 1                                // column width of volume bar
+	volBarGap   = 2                                // gap between volume bar and artwork
 	artworkLeft = padLeft + volBarWidth + volBarGap // artwork start column
-
-	displayRows = padTop + artworkRows // total rows reserved
 
 	numTextLines = 5 // track name, artist/album, position, progress bar, controls
 
@@ -49,6 +47,30 @@ const (
 )
 
 var out = os.Stdout
+
+// Dynamic layout dimensions, recalculated on terminal resize.
+var (
+	artworkCols = defaultArtworkCols
+	artworkRows = defaultArtworkRows
+	displayRows = padTop + artworkRows
+)
+
+// recalcLayout adjusts artwork dimensions to fit the current terminal height.
+func recalcLayout() {
+	_, h, err := term.GetSize(int(out.Fd()))
+	if err != nil || h <= 0 {
+		return
+	}
+	artworkRows = defaultArtworkRows
+	if h < padTop+defaultArtworkRows+2 {
+		artworkRows = h - 2
+		if artworkRows < 1 {
+			artworkRows = 1
+		}
+	}
+	artworkCols = artworkRows * 2
+	displayRows = padTop + artworkRows
+}
 
 // version is set at build time via -ldflags "-X main.version=...".
 var version = "dev"
@@ -73,6 +95,8 @@ func main() {
 	artworkPath := tmp.Name()
 	tmp.Close()
 	defer os.Remove(artworkPath)
+
+	recalcLayout()
 
 	// Switch to alternate screen buffer and hide cursor while running.
 	fmt.Fprint(out, "\x1b[?1049h\x1b[?25l")
@@ -307,7 +331,8 @@ func main() {
 				redrawControls()
 			}
 		case <-winch:
-			// Terminal was resized — force a full redraw.
+			// Terminal was resized — recalculate layout and force a full redraw.
+			recalcLayout()
 			currentTrack = ""
 			spaceAllocated = false
 			hasArtwork = false
