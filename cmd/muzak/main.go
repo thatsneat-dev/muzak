@@ -43,24 +43,35 @@ const (
 	iconVolHigh = "\U000F057E" // 󰕾 nf-md-volume_high
 	iconVolOff  = "\U000F0581" // 󰖁 nf-md-volume_off
 
+	iconShuffle   = "\U000F049D" // 󰒝 nf-md-shuffle_variant
+	iconRepeat    = "\U000F0456" // 󰑖 nf-md-repeat
+	iconRepeatOne = "\U000F0458" // 󰑘 nf-md-repeat_once
+
 	restartThreshold = 3.0 // seconds before 'h' restarts instead of going previous
+
+	maxQueueTracks = 10 // max upcoming tracks to display
 )
 
 var out = os.Stdout
 
 // Dynamic layout dimensions, recalculated on terminal resize.
 var (
-	artworkCols = defaultArtworkCols
-	artworkRows = defaultArtworkRows
-	displayRows = padTop + artworkRows
+	artworkCols  = defaultArtworkCols
+	artworkRows  = defaultArtworkRows
+	displayRows  = padTop + artworkRows
+	terminalCols int // 0 means unknown
 )
 
-// recalcLayout adjusts artwork dimensions to fit the current terminal height.
+// recalcLayout adjusts artwork and text dimensions to fit the current terminal size.
 func recalcLayout() {
-	_, h, err := term.GetSize(int(out.Fd()))
+	w, h, err := term.GetSize(int(os.Stdin.Fd()))
+	if err != nil {
+		w, h, err = term.GetSize(int(out.Fd()))
+	}
 	if err != nil || h <= 0 {
 		return
 	}
+	terminalCols = w
 	artworkRows = defaultArtworkRows
 	if h < padTop+defaultArtworkRows+2 {
 		artworkRows = h - 2
@@ -70,6 +81,46 @@ func recalcLayout() {
 	}
 	artworkCols = artworkRows * 2
 	displayRows = padTop + artworkRows
+}
+
+// truncateVisible truncates s so that its visible (non-ANSI-escape) width
+// does not exceed maxWidth. Any open SGR styling is reset with \x1b[0m.
+func truncateVisible(s string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	var (
+		visible  int
+		inEsc    bool
+		cutIndex int  // byte index where visible char count reaches maxWidth-1
+		cutSet   bool // whether we found a cut point
+		overflows bool
+	)
+	for i, r := range s {
+		if r == '\x1b' {
+			inEsc = true
+			continue
+		}
+		if inEsc {
+			if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') {
+				inEsc = false
+			}
+			continue
+		}
+		visible++
+		if visible == maxWidth && !cutSet {
+			cutIndex = i
+			cutSet = true
+		}
+		if visible > maxWidth {
+			overflows = true
+			break
+		}
+	}
+	if overflows && cutSet {
+		return s[:cutIndex] + "\x1b[0m…"
+	}
+	return s
 }
 
 // version is set at build time via -ldflags "-X main.version=...".
@@ -120,6 +171,12 @@ func main() {
 		}
 	}()
 
+	// overlayMode tracks whether we're showing an overlay.
+	// "" = normal now-playing view, "queue" = queue list.
+	var overlayMode string
+
+	const queueVisible = 5 // max queue tracks visible at once
+
 	var (
 		currentTrack   string
 		hasArtwork     bool
@@ -127,7 +184,16 @@ func main() {
 		latestInfo     *music.TrackInfo
 		pollRunning    bool
 		flashIcon      string // "prev", "play", "next", or ""
+		shuffleOn      bool
+		repeatMode     string // "off", "one", or "all"
+		queueTracks    []music.QueueTrack
+		queueScroll    int // index of first visible queue track
+		queueLoading   bool
+		spinnerFrame   int
+		forceRedraw    bool // next poll result redraws even during overlay
 	)
+
+	spinnerChars := [4]string{"◐", "◓", "◑", "◒"}
 
 	type pollResult struct {
 		info *music.TrackInfo
@@ -154,6 +220,84 @@ func main() {
 		fmt.Fprint(out, "\x1b8")
 	}
 
+	// drawModalLine writes a single line at the given row/col using
+	// the same save/restore cursor approach as the rest of the rendering.
+	drawModalLine := func(row, col int, s string) {
+		fmt.Fprint(out, "\x1b8")
+		if row > 0 {
+			fmt.Fprintf(out, "\x1b[%dB", row)
+		}
+		if col > 0 {
+			fmt.Fprintf(out, "\x1b[%dC", col)
+		}
+		fmt.Fprintf(out, "\x1b[K%s", s)
+	}
+
+	// drawQueue renders the queue as a bordered modal to the right of artwork.
+	drawQueue := func() {
+		modalCol := padLeft
+		if hasArtwork {
+			modalCol = artworkLeft + artworkCols + 2
+		}
+		modalWidth := 40
+		if terminalCols > modalCol+2 {
+			modalWidth = terminalCols - modalCol - 2
+		}
+		innerWidth := modalWidth - 4 // borders + padding
+
+		// Title bar.
+		title := "Up Next"
+		titleLen := len(title)
+		pad := modalWidth - 2 - titleLen - 2
+		if pad < 0 {
+			pad = 0
+		}
+		drawModalLine(padTop, modalCol,
+			"┌ \x1b[1m"+title+"\x1b[0m "+strings.Repeat("─", pad)+"┐")
+
+		// Content rows.
+		rows := queueVisible
+		if rows > artworkRows-2 {
+			rows = artworkRows - 2
+			if rows < 1 {
+				rows = 1
+			}
+		}
+		for i := range rows {
+			idx := queueScroll + i
+			var content string
+			if queueLoading && i == 0 {
+				content = spinnerChars[spinnerFrame%len(spinnerChars)] + " Loading…"
+			} else if !queueLoading && len(queueTracks) == 0 && i == 0 {
+				content = "No upcoming tracks."
+			} else if idx < len(queueTracks) {
+				t := queueTracks[idx]
+				content = fmt.Sprintf("%2d. %s - %s", idx+1, t.Artist, t.Name)
+				content = truncateVisible(content, innerWidth)
+			}
+			// Pad to fill interior.
+			visible := len([]rune(content))
+			trailing := innerWidth - visible
+			if trailing < 0 {
+				trailing = 0
+			}
+			drawModalLine(padTop+1+i, modalCol,
+				"│ "+content+strings.Repeat(" ", trailing)+" │")
+		}
+
+		// Scroll indicators in bottom border.
+		bottom := strings.Repeat("─", modalWidth-2)
+		if !queueLoading && len(queueTracks) > 0 {
+			pos := fmt.Sprintf(" %d-%d/%d ", queueScroll+1,
+				min(queueScroll+rows, len(queueTracks)), len(queueTracks))
+			if len(pos) < modalWidth-2 {
+				bottom = strings.Repeat("─", modalWidth-2-len(pos)) + pos
+			}
+		}
+		drawModalLine(padTop+1+rows, modalCol,
+			"└"+bottom+"┘")
+	}
+
 	// startPoll kicks off a NowPlaying query in the background.
 	// Only one poll runs at a time.
 	startPoll := func() {
@@ -173,8 +317,6 @@ func main() {
 
 	// handlePoll processes an async poll result and updates the display.
 	handlePoll := func(info *music.TrackInfo) {
-		latestInfo = info
-
 		if info == nil {
 			if currentTrack != "" {
 				clearDisplay()
@@ -189,7 +331,6 @@ func main() {
 		}
 
 		trackKey := info.Artist + "\x00" + info.Album + "\x00" + info.Name
-		lines := buildLines(info, flashIcon)
 
 		if trackKey != currentTrack {
 			if !spaceAllocated {
@@ -208,17 +349,27 @@ func main() {
 				}
 			}
 
+			lines := buildLines(info, flashIcon, hasArtwork, shuffleOn, repeatMode)
 			drawText(lines, hasArtwork)
 			if hasArtwork {
 				drawVolumeBar(flashIcon)
 			}
 			currentTrack = trackKey
 		} else {
+			lines := buildLines(info, flashIcon, hasArtwork, shuffleOn, repeatMode)
 			updateDynamicLines(lines, hasArtwork)
 			if hasArtwork {
 				drawVolumeBar(flashIcon)
 			}
 		}
+	}
+
+	// Fetch initial playback option state.
+	if on, err := music.ShuffleEnabled(ctx); err == nil {
+		shuffleOn = on
+	}
+	if mode, err := music.RepeatMode(ctx); err == nil {
+		repeatMode = mode
 	}
 
 	startPoll()
@@ -239,6 +390,40 @@ func main() {
 		<-flashTimer.C
 	}
 
+	// spinner ticker animates the queue loading spinner.
+	spinnerTicker := time.NewTicker(100 * time.Millisecond)
+	spinnerTicker.Stop()
+
+	// queueCh delivers queue results from the background fetch.
+	queueCh := make(chan []music.QueueTrack, 1)
+
+	// exitOverlay returns to the normal now-playing view,
+	// redrawing only the text area that the modal overwrote.
+	exitOverlay := func() {
+		overlayMode = ""
+		queueLoading = false
+		spinnerTicker.Stop()
+		// Clear all rows in the text column area.
+		colOffset := padLeft
+		if hasArtwork {
+			colOffset = artworkLeft + artworkCols + 2
+		}
+		for i := range displayRows {
+			fmt.Fprint(out, "\x1b8")
+			if i > 0 {
+				fmt.Fprintf(out, "\x1b[%dB", i)
+			}
+			if colOffset > 0 {
+				fmt.Fprintf(out, "\x1b[%dC", colOffset)
+			}
+			fmt.Fprint(out, "\x1b[K")
+		}
+		if latestInfo != nil {
+			lines := buildLines(latestInfo, flashIcon, hasArtwork, shuffleOn, repeatMode)
+			drawText(lines, hasArtwork)
+		}
+	}
+
 	// redrawControls overwrites just the controls line with current flash state.
 	redrawControls := func() {
 		if latestInfo == nil {
@@ -257,7 +442,7 @@ func main() {
 		if colOffset > 0 {
 			fmt.Fprintf(out, "\x1b[%dC", colOffset)
 		}
-		fmt.Fprintf(out, "\x1b[K%s", controlsLine(latestInfo.Playing, flashIcon))
+		fmt.Fprintf(out, "\x1b[K%s", controlsLine(latestInfo.Playing, flashIcon, shuffleOn, repeatMode))
 	}
 
 	for {
@@ -271,11 +456,59 @@ func main() {
 		case result := <-pollCh:
 			pollRunning = false
 			if result.err != nil {
-				fmt.Fprintf(os.Stderr, "muzak: poll: %v\r\n", result.err)
+				if overlayMode == "" {
+					fmt.Fprintf(os.Stderr, "muzak: poll: %v\r\n", result.err)
+				}
 			} else {
-				handlePoll(result.info)
+				latestInfo = result.info
+				if overlayMode == "" || forceRedraw {
+					handlePoll(result.info)
+					if forceRedraw && overlayMode == "queue" {
+						drawQueue()
+					}
+					forceRedraw = false
+				}
 			}
 		case key := <-keys:
+			// Global keys that work in any mode.
+			switch key {
+			case 'x', 3: // 'x' or Ctrl+C
+				if overlayMode != "" {
+					fmt.Fprint(out, "\x1b[2J\x1b[H")
+				} else if spaceAllocated {
+					fmt.Fprint(out, "\x1b8")
+					fmt.Fprintf(out, "\x1b[%dB\r\n", displayRows)
+				}
+				return
+			}
+
+			// Overlay-specific keys.
+			if overlayMode == "queue" {
+				rows := queueVisible
+				if rows > artworkRows-2 {
+					rows = artworkRows - 2
+					if rows < 1 {
+						rows = 1
+					}
+				}
+				switch key {
+				case 'q':
+					exitOverlay()
+				case 'j':
+					if queueScroll+rows < len(queueTracks) {
+						queueScroll++
+						drawQueue()
+					}
+				case 'k':
+					if queueScroll > 0 {
+						queueScroll--
+						drawQueue()
+					}
+				}
+				continue
+			}
+
+			// Normal now-playing keys.
 			switch key {
 			case ' ':
 				go music.PlayPause(ctx)
@@ -313,12 +546,31 @@ func main() {
 					drawVolumeBar(flashIcon)
 				}
 				safeReset(flashTimer, 500*time.Millisecond)
-			case 'q', 3: // 'q' or Ctrl+C
-				if spaceAllocated {
-					fmt.Fprint(out, "\x1b8")
-					fmt.Fprintf(out, "\x1b[%dB\r\n", displayRows)
-				}
-				return
+			case 's':
+				go func() {
+					if on, err := music.ToggleShuffle(ctx); err == nil {
+						shuffleOn = on
+						redrawControls()
+					}
+				}()
+			case 'r':
+				go func() {
+					if mode, err := music.CycleRepeat(ctx); err == nil {
+						repeatMode = mode
+						redrawControls()
+					}
+				}()
+			case 'q':
+				overlayMode = "queue"
+				queueScroll = 0
+				queueLoading = true
+				spinnerFrame = 0
+				drawQueue()
+				spinnerTicker.Reset(100 * time.Millisecond)
+				go func() {
+					tracks, _ := music.Queue(ctx)
+					queueCh <- tracks
+				}()
 			}
 			// Schedule a refresh to pick up the new state.
 			safeReset(refresh, 300*time.Millisecond)
@@ -330,12 +582,27 @@ func main() {
 			} else {
 				redrawControls()
 			}
+		case <-spinnerTicker.C:
+			if queueLoading && overlayMode == "queue" {
+				spinnerFrame++
+				drawQueue()
+			}
+		case tracks := <-queueCh:
+			queueLoading = false
+			spinnerTicker.Stop()
+			if tracks != nil {
+				queueTracks = tracks
+			}
+			if overlayMode == "queue" {
+				drawQueue()
+			}
 		case <-winch:
 			// Terminal was resized — recalculate layout and force a full redraw.
 			recalcLayout()
 			currentTrack = ""
 			spaceAllocated = false
 			hasArtwork = false
+			forceRedraw = overlayMode != ""
 			allocateSpace()
 			startPoll()
 		case <-refresh.C:
@@ -347,13 +614,24 @@ func main() {
 }
 
 // buildLines constructs the five display lines for the current track.
-func buildLines(info *music.TrackInfo, flash string) []string {
+func buildLines(info *music.TrackInfo, flash string, withArtwork bool, shuffle bool, repeat string) []string {
+	bw := barWidth
+	if terminalCols > 0 {
+		colOffset := padLeft
+		if withArtwork {
+			colOffset = artworkLeft + artworkCols + 2
+		}
+		avail := terminalCols - colOffset - 2
+		if avail < bw && avail > 0 {
+			bw = avail
+		}
+	}
 	return []string{
 		"\x1b[1m" + info.Name + "\x1b[0m",
 		info.Artist + " - " + info.Album,
 		formatDuration(info.Position) + " / " + formatDuration(info.Duration),
-		progressBar(info.Position, info.Duration, barWidth),
-		controlsLine(info.Playing, flash),
+		progressBar(info.Position, info.Duration, bw),
+		controlsLine(info.Playing, flash, shuffle, repeat),
 	}
 }
 
@@ -362,8 +640,13 @@ const (
 	reset  = "\x1b[0m"
 )
 
-// controlsLine renders the playback control icons, highlighting the active one during a flash.
-func controlsLine(playing bool, flash string) string {
+// controlsLine renders the playback control icons with shuffle/repeat state.
+func controlsLine(playing bool, flash string, shuffle bool, repeat string) string {
+	shuf := iconShuffle
+	if shuffle {
+		shuf = yellow + iconShuffle + reset
+	}
+
 	prev := iconPrev
 	if flash == "prev" {
 		prev = yellow + prev + reset
@@ -382,7 +665,17 @@ func controlsLine(playing bool, flash string) string {
 		next = yellow + next + reset
 	}
 
-	return prev + "  " + pp + "  " + next
+	var rep string
+	switch repeat {
+	case "one":
+		rep = yellow + iconRepeatOne + reset
+	case "all":
+		rep = yellow + iconRepeat + reset
+	default:
+		rep = iconRepeat
+	}
+
+	return shuf + "  " + prev + "  " + pp + "  " + next + "  " + rep
 }
 
 // progressBar returns a text-based progress bar of the given width using filled and empty segments.
@@ -426,6 +719,10 @@ func drawText(lines []string, withArtwork bool) {
 	if withArtwork {
 		colOffset = artworkLeft + artworkCols + 2
 	}
+	maxWidth := 0
+	if terminalCols > colOffset {
+		maxWidth = terminalCols - colOffset
+	}
 
 	for i, line := range lines {
 		fmt.Fprint(out, "\x1b8")
@@ -435,6 +732,9 @@ func drawText(lines []string, withArtwork bool) {
 		}
 		if colOffset > 0 {
 			fmt.Fprintf(out, "\x1b[%dC", colOffset)
+		}
+		if maxWidth > 0 {
+			line = truncateVisible(line, maxWidth)
 		}
 		fmt.Fprintf(out, "\x1b[K%s", line)
 	}
@@ -447,6 +747,10 @@ func updateDynamicLines(lines []string, withArtwork bool) {
 	if withArtwork {
 		colOffset = artworkLeft + artworkCols + 2
 	}
+	maxWidth := 0
+	if terminalCols > colOffset {
+		maxWidth = terminalCols - colOffset
+	}
 
 	for i := 2; i < len(lines); i++ {
 		fmt.Fprint(out, "\x1b8")
@@ -457,7 +761,11 @@ func updateDynamicLines(lines []string, withArtwork bool) {
 		if colOffset > 0 {
 			fmt.Fprintf(out, "\x1b[%dC", colOffset)
 		}
-		fmt.Fprintf(out, "\x1b[K%s", lines[i])
+		line := lines[i]
+		if maxWidth > 0 {
+			line = truncateVisible(line, maxWidth)
+		}
+		fmt.Fprintf(out, "\x1b[K%s", line)
 	}
 }
 

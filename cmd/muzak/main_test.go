@@ -78,7 +78,7 @@ func TestControlsLine(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result := controlsLine(tt.playing, tt.flash)
+			result := controlsLine(tt.playing, tt.flash, false, "off")
 
 			// Always contains all three icons.
 			assert.Contains(t, result, iconPrev)
@@ -115,7 +115,7 @@ func TestBuildLines(t *testing.T) {
 		Playing:  true,
 	}
 
-	lines := buildLines(info, "")
+	lines := buildLines(info, "", false, false, "off")
 
 	require.Len(t, lines, numTextLines)
 
