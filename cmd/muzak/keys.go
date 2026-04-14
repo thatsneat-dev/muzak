@@ -182,18 +182,18 @@ func (a *app) handleBrowseSelect() {
 			go func() { _ = music.PlayPlaylist(a.ctx, p.PersistentID) }()
 			a.exitOverlay()
 			ui.SafeReset(a.refresh, 500*time.Millisecond)
-			}
-			case browse.ScreenFolder:
-			p, ok := browse.SelectedFolderItem(&a.browseState)
-			if !ok {
-				return
-			}
-			if p.IsFolder() {
-				browse.ClearSearch(&a.browseState)
-				browse.EnterFolder(&a.browseState, p)
-				a.drawBrowse()
-			} else {
-				go func() { _ = music.PlayPlaylist(a.ctx, p.PersistentID) }()
+		}
+	case browse.ScreenFolder:
+		p, ok := browse.SelectedFolderItem(&a.browseState)
+		if !ok {
+			return
+		}
+		if p.IsFolder() {
+			browse.ClearSearch(&a.browseState)
+			browse.EnterFolder(&a.browseState, p)
+			a.drawBrowse()
+		} else {
+			go func() { _ = music.PlayPlaylist(a.ctx, p.PersistentID) }()
 			a.exitOverlay()
 			ui.SafeReset(a.refresh, 500*time.Millisecond)
 		}
