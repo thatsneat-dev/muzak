@@ -5,8 +5,7 @@
 </div>
 
 <div align="center">
-
-<p>
+  <p>
     <a href="https://github.com/thatsneat-dev/muzak/releases/latest">
       <img alt="Latest release" src="https://img.shields.io/github/v/release/thatsneat-dev/muzak?style=for-the-badge&color=C9CBFF&logoColor=D9E0EE&labelColor=302D41" />
     </a>
@@ -31,7 +30,7 @@
 `muzak` is a terminal-based tool to control your Apple Music player without
 needing to switch contexts.
 
-<img src="docs/assets/muzak_demo.gif"/>
+<img src="docs/assets/muzak_demo.gif" width="100%" />
 
 # muzak
 
