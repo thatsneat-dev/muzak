@@ -46,8 +46,8 @@
           };
         };
 
-        devShells.default = pkgs.mkShell {
-          packages = with pkgs; [
+        devShells = let
+          devPackages = with pkgs; [
             go
             just
             gofumpt
@@ -57,6 +57,15 @@
             statix
             deadnix
           ];
+        in {
+          default = pkgs.mkShell {packages = devPackages;};
+          bash = pkgs.mkShell {packages = devPackages;};
+          zsh = pkgs.mkShell {
+            packages = devPackages;
+            shellHook = ''
+              exec zsh
+            '';
+          };
         };
 
         apps.muzak = {
