@@ -59,13 +59,17 @@ vim-style keybindings.
 
 | Key     | Action                                       |
 | ------- | -------------------------------------------- |
+| `space` | Toggle play/pause                            |
 | `h`     | Restart track (or previous track if < 3s in) |
 | `l`     | Next track                                   |
-| `space` | Toggle play/pause                            |
 | `k`     | Volume up                                    |
 | `j`     | Volume down                                  |
+| `s`     | Toggle shuffle                               |
+| `r`     | Cycle repeat mode                            |
+| `q`     | Open queue overlay                           |
 | `b`     | Browse playlists and library                 |
-| `q`     | Quit                                         |
+| `x`     | Quit                                         |
+| `Ctrl+C`| Quit                                         |
 
 ## Requirements
 
@@ -81,24 +85,39 @@ vim-style keybindings.
 ```
 muzak/
 ├── cmd/muzak/
-│   ├── main.go                      # Entry point, display loop, key handling
-│   └── browse.go                    # Browse modal state machine and rendering
+│   ├── main.go                        # Entry point, stdin reader
+│   ├── app.go                         # App struct, display loop, overlays
+│   └── keys.go                        # Key dispatch for all modes
 ├── internal/
+│   ├── browse/
+│   │   ├── state.go                   # Browse modal state machine and screens
+│   │   ├── model.go                   # Data model, sorting, search filtering
+│   │   ├── render.go                  # Browse overlay rendering
+│   │   └── browse_test.go
 │   ├── music/
-│   │   ├── music.go                 # NowPlaying via embedded AppleScript, playback controls
-│   │   ├── browse.go                # Library browsing: playlists, albums, playback
-│   │   ├── now_playing.applescript  # AppleScript: track metadata, artwork, player state
+│   │   ├── music.go                   # NowPlaying via embedded AppleScript, playback controls
+│   │   ├── browse.go                  # Library browsing: playlists, albums, playback
+│   │   ├── now_playing.applescript    # AppleScript: track metadata, artwork, player state
+│   │   ├── queue.applescript          # AppleScript: current queue
 │   │   ├── list_playlists.applescript
 │   │   ├── list_albums.applescript
 │   │   ├── list_album_tracks.applescript
 │   │   ├── play_playlist.applescript
 │   │   └── play_album.applescript
+│   ├── ui/
+│   │   ├── draw.go                    # Kitty graphics, progress bar, now-playing renderer
+│   │   ├── icons.go                   # Nerd Font icon constants
+│   │   ├── layout.go                  # Terminal size detection and layout math
+│   │   ├── text.go                    # Visible-width truncation and text helpers
+│   │   └── ui_test.go
 │   └── volume/
-│       └── volume.go                # System volume via cgo + CoreAudio
-├── ref/                         # Reference AppleScript snippets
-├── justfile                     # Development task runner
-├── VERSION                      # Semver version source of truth
-├── flake.nix                    # Nix flake for dev shell and package
+│       └── volume.go                  # System volume via cgo + CoreAudio
+├── tests/                             # Integration tests
+├── docs/                              # Release notes and assets
+├── ref/                               # Reference AppleScript snippets
+├── justfile                           # Development task runner
+├── VERSION                            # Semver version source of truth
+├── flake.nix                          # Nix flake for dev shell and package
 ├── go.mod
 └── go.sum
 ```
