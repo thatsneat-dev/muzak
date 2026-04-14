@@ -15,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mattn/go-runewidth"
 	"github.com/thatsneat-dev/muzak/internal/music"
 	"github.com/thatsneat-dev/muzak/internal/volume"
 	"golang.org/x/term"
@@ -83,18 +84,19 @@ func recalcLayout() {
 	displayRows = padTop + artworkRows
 }
 
-// truncateVisible truncates s so that its visible (non-ANSI-escape) width
-// does not exceed maxWidth. Any open SGR styling is reset with \x1b[0m.
+// truncateVisible truncates s so that its visible (non-ANSI-escape) terminal
+// cell width does not exceed maxWidth, correctly handling wide characters.
+// When truncated, an ellipsis (…) is appended and fits within maxWidth.
+// Any open SGR styling is reset with \x1b[0m.
 func truncateVisible(s string, maxWidth int) string {
 	if maxWidth <= 0 {
 		return ""
 	}
 	var (
-		visible  int
+		width    int
 		inEsc    bool
-		cutIndex int  // byte index where visible char count reaches maxWidth-1
-		cutSet   bool // whether we found a cut point
-		overflows bool
+		ellCut  int  // byte index where visible width <= maxWidth-1
+		hasMore bool // whether there are visible chars beyond maxWidth
 	)
 	for i, r := range s {
 		if r == '\x1b' {
@@ -107,20 +109,23 @@ func truncateVisible(s string, maxWidth int) string {
 			}
 			continue
 		}
-		visible++
-		if visible == maxWidth && !cutSet {
-			cutIndex = i
-			cutSet = true
-		}
-		if visible > maxWidth {
-			overflows = true
+		rw := runewidth.RuneWidth(r)
+		if width+rw > maxWidth {
+			hasMore = true
 			break
 		}
+		width += rw
+		if width <= maxWidth-1 {
+			ellCut = i + len(string(r))
+		}
 	}
-	if overflows && cutSet {
-		return s[:cutIndex] + "\x1b[0m…"
+	if !hasMore {
+		return s
 	}
-	return s
+	if ellCut > 0 {
+		return s[:ellCut] + "\x1b[0m…"
+	}
+	return "…"
 }
 
 // version is set at build time via -ldflags "-X main.version=...".
@@ -279,7 +284,7 @@ func main() {
 				content = truncateVisible(content, innerWidth)
 			}
 			// Pad to fill interior.
-			visible := len([]rune(content))
+			visible := visibleLen(content)
 			trailing := innerWidth - visible
 			if trailing < 0 {
 				trailing = 0
@@ -488,12 +493,12 @@ func main() {
 		overlayMode = ""
 		queueLoading = false
 		spinnerTicker.Stop()
-		// Clear all rows in the text column area (plus hint line below modal).
+		// Clear all rows in the text column area (plus hint lines below modal).
 		colOffset := padLeft
 		if hasArtwork {
 			colOffset = artworkLeft + artworkCols + 2
 		}
-		for i := range displayRows + 2 {
+		for i := range displayRows + 3 {
 			fmt.Fprint(out, "\x1b8")
 			if i > 0 {
 				fmt.Fprintf(out, "\x1b[%dB", i)
@@ -575,7 +580,7 @@ func main() {
 		case key := <-keys:
 			// Global keys that work in any mode.
 			switch key {
-			case 'x', 3: // 'x' or Ctrl+C
+			case 3: // Ctrl+C
 				if overlayMode != "" {
 					fmt.Fprint(out, "\x1b[2J\x1b[H")
 				} else if spaceAllocated {
@@ -612,8 +617,33 @@ func main() {
 			}
 
 			if overlayMode == "browse" {
+				if browse.SearchActive {
+					switch key {
+					case 27: // Escape — clear search
+						clearSearch(&browse)
+						*browse.currentList() = listState{}
+						drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+					case '\r', '\n': // Enter — confirm search, exit input mode
+						browse.SearchActive = false
+						drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+					case 127, 8: // Backspace
+						if len(browse.SearchQuery) > 0 {
+							browse.SearchQuery = browse.SearchQuery[:len(browse.SearchQuery)-1]
+							*browse.currentList() = listState{}
+							drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+						}
+					default:
+						if key >= 32 && key <= 126 {
+							browse.SearchQuery += string(rune(key))
+							*browse.currentList() = listState{}
+							drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+						}
+					}
+					continue
+				}
 				switch key {
-				case 'q', 27: // q or Escape
+				case 'x', 27: // x or Escape
+					clearSearch(&browse)
 					if browse.Screen == browseRoot {
 						exitOverlay()
 					} else {
@@ -621,6 +651,7 @@ func main() {
 						drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
 					}
 				case 'h':
+					clearSearch(&browse)
 					switch browse.Screen {
 					case browseRoot:
 						exitOverlay()
@@ -645,6 +676,7 @@ func main() {
 					case browseRoot:
 						switch browse.RootView.Cursor {
 						case rootItemPlaylists:
+							clearSearch(&browse)
 							browse.Screen = browsePlaylists
 							browse.PlaylistsView = listState{}
 							browse.FolderStack = nil
@@ -652,30 +684,32 @@ func main() {
 							fetchPlaylists()
 							drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
 						case rootItemLibrary:
+							clearSearch(&browse)
 							browse.Screen = browseAlbums
 							browse.AlbumsView = listState{}
 							fetchAlbums()
 							drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
 						}
 					case browsePlaylists:
-						topLevel := filterPlaylistsByParent(browse.Playlists, "")
-						idx := browse.PlaylistsView.Cursor
-						if !browse.PlaylistsLoading && idx < len(topLevel) {
-							p := topLevel[idx]
-							if p.IsFolder() {
-								enterFolder(&browse, p)
-								drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
-							} else {
-								go music.PlayPlaylist(ctx, p.PersistentID)
-								exitOverlay()
-								safeReset(refresh, 500*time.Millisecond)
+						if !browse.PlaylistsLoading {
+							p, ok := browseSelectedPlaylist(&browse)
+							if ok {
+								if p.IsFolder() {
+									clearSearch(&browse)
+									enterFolder(&browse, p)
+									drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+								} else {
+									go music.PlayPlaylist(ctx, p.PersistentID)
+									exitOverlay()
+									safeReset(refresh, 500*time.Millisecond)
+								}
 							}
 						}
 					case browseFolder:
-						idx := browse.FolderView.Cursor
-						if idx < len(browse.FolderItems) {
-							p := browse.FolderItems[idx]
+						p, ok := browseSelectedFolderItem(&browse)
+						if ok {
 							if p.IsFolder() {
+								clearSearch(&browse)
 								enterFolder(&browse, p)
 								drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
 							} else {
@@ -685,14 +719,16 @@ func main() {
 							}
 						}
 					case browseAlbums:
-						if !browse.AlbumsLoading && len(browse.Albums) > 0 {
-							a := browse.Albums[browse.AlbumsView.Cursor]
-							browse.SelectedAlbum = &a
-							browse.Screen = browseAlbumTracks
-							browse.TracksView = listState{}
-							browse.AlbumTracks = nil
-							fetchAlbumTracks(&a)
-							drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+						if !browse.AlbumsLoading {
+							a, ok := browseSelectedAlbum(&browse)
+							if ok {
+								browse.SelectedAlbum = &a
+								browse.Screen = browseAlbumTracks
+								browse.TracksView = listState{}
+								browse.AlbumTracks = nil
+								fetchAlbumTracks(&a)
+								drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+							}
 						}
 					case browseAlbumTracks:
 						if !browse.TracksLoading && browse.SelectedAlbum != nil {
@@ -702,12 +738,36 @@ func main() {
 							safeReset(refresh, 500*time.Millisecond)
 						}
 					}
+				case 'a':
+					if browse.Screen != browseRoot && !browse.SearchActive {
+						browse.Sort = sortAsc
+						*browse.currentList() = listState{}
+						drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+					}
+				case 'd':
+					if browse.Screen != browseRoot && !browse.SearchActive {
+						browse.Sort = sortDesc
+						*browse.currentList() = listState{}
+						drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+					}
+				case '/':
+					if browse.Screen != browseRoot && !browse.SearchActive {
+						browse.SearchActive = true
+						browse.SearchQuery = ""
+						drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+					}
 				}
 				continue
 			}
 
 			// Normal now-playing keys.
 			switch key {
+			case 'x':
+				if spaceAllocated {
+					fmt.Fprint(out, "\x1b8")
+					fmt.Fprintf(out, "\x1b[%dB\r\n", displayRows)
+				}
+				return
 			case ' ':
 				go music.PlayPause(ctx)
 				if latestInfo != nil {

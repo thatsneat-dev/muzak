@@ -2,8 +2,11 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
+	"unicode/utf8"
 
+	"github.com/mattn/go-runewidth"
 	"github.com/thatsneat-dev/muzak/internal/music"
 )
 
@@ -16,6 +19,15 @@ const (
 	browseAlbums
 	browseAlbumTracks
 	browseFolder
+)
+
+// sortOrder controls the sorting of browse lists.
+type sortOrder uint8
+
+const (
+	sortNone sortOrder = iota
+	sortAsc
+	sortDesc
 )
 
 // listState tracks cursor and scroll position for a scrollable list.
@@ -54,6 +66,10 @@ type browseState struct {
 	TracksLoading    bool
 
 	AutoOpened bool
+
+	Sort         sortOrder
+	SearchQuery  string
+	SearchActive bool
 }
 
 const (
@@ -66,14 +82,14 @@ const (
 func (b *browseState) browseTitle() string {
 	switch b.Screen {
 	case browsePlaylists:
-		return "Playlists"
+		return iconPlaylistMusic + " Playlists"
 	case browseFolder:
 		if b.FolderName != "" {
-			return b.FolderName
+			return iconFolder + " " + b.FolderName
 		}
-		return "Folder"
+		return iconFolder + " Folder"
 	case browseAlbums:
-		return "Library"
+		return iconLibrary + " Library"
 	case browseAlbumTracks:
 		if b.SelectedAlbum != nil {
 			return b.SelectedAlbum.Name
@@ -112,13 +128,13 @@ func (b *browseState) currentList() *listState {
 func (b *browseState) itemCount() int {
 	switch b.Screen {
 	case browsePlaylists:
-		return len(filterPlaylistsByParent(b.Playlists, ""))
+		return len(visiblePlaylists(b))
 	case browseFolder:
-		return len(b.FolderItems)
+		return len(visibleFolderItems(b))
 	case browseAlbums:
-		return len(b.Albums)
+		return len(visibleAlbums(b))
 	case browseAlbumTracks:
-		return len(b.AlbumTracks)
+		return len(visibleAlbumTracks(b))
 	default:
 		return rootItemCount
 	}
@@ -153,6 +169,141 @@ func filterPlaylistsByParent(all []music.Playlist, parentID string) []music.Play
 		}
 	}
 	return result
+}
+
+// fuzzyMatch reports whether query matches target using subsequence matching.
+// Both are compared case-insensitively.
+func fuzzyMatch(target, query string) bool {
+	if query == "" {
+		return true
+	}
+	target = strings.ToLower(target)
+	query = strings.ToLower(query)
+	qi := 0
+	for _, r := range target {
+		qr, _ := utf8.DecodeRuneInString(query[qi:])
+		if r == qr {
+			qi += utf8.RuneLen(qr)
+			if qi >= len(query) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// visiblePlaylists returns top-level playlists filtered and sorted per browse state.
+func visiblePlaylists(b *browseState) []music.Playlist {
+	items := filterPlaylistsByParent(b.Playlists, "")
+	if b.SearchQuery != "" {
+		var filtered []music.Playlist
+		for _, p := range items {
+			if fuzzyMatch(p.Name, b.SearchQuery) {
+				filtered = append(filtered, p)
+			}
+		}
+		items = filtered
+	}
+	return sortPlaylists(items, b.Sort)
+}
+
+// visibleFolderItems returns folder items filtered and sorted per browse state.
+func visibleFolderItems(b *browseState) []music.Playlist {
+	items := b.FolderItems
+	if b.SearchQuery != "" {
+		var filtered []music.Playlist
+		for _, p := range items {
+			if fuzzyMatch(p.Name, b.SearchQuery) {
+				filtered = append(filtered, p)
+			}
+		}
+		items = filtered
+	}
+	return sortPlaylists(items, b.Sort)
+}
+
+// visibleAlbums returns albums filtered and sorted per browse state.
+func visibleAlbums(b *browseState) []music.Album {
+	items := b.Albums
+	if b.SearchQuery != "" {
+		var filtered []music.Album
+		for _, a := range items {
+			if fuzzyMatch(a.Name, b.SearchQuery) || fuzzyMatch(a.AlbumArtist, b.SearchQuery) {
+				filtered = append(filtered, a)
+			}
+		}
+		items = filtered
+	}
+	return sortAlbums(items, b.Sort)
+}
+
+// visibleAlbumTracks returns album tracks filtered and sorted per browse state.
+func visibleAlbumTracks(b *browseState) []music.AlbumTrack {
+	items := b.AlbumTracks
+	if b.SearchQuery != "" {
+		var filtered []music.AlbumTrack
+		for _, t := range items {
+			if fuzzyMatch(t.Name, b.SearchQuery) {
+				filtered = append(filtered, t)
+			}
+		}
+		items = filtered
+	}
+	return sortAlbumTracks(items, b.Sort)
+}
+
+func sortPlaylists(items []music.Playlist, order sortOrder) []music.Playlist {
+	if order == sortNone || len(items) == 0 {
+		return items
+	}
+	out := make([]music.Playlist, len(items))
+	copy(out, items)
+	sort.Slice(out, func(i, j int) bool {
+		if order == sortDesc {
+			return strings.ToLower(out[i].Name) > strings.ToLower(out[j].Name)
+		}
+		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+	})
+	return out
+}
+
+func sortAlbums(items []music.Album, order sortOrder) []music.Album {
+	if order == sortNone || len(items) == 0 {
+		return items
+	}
+	out := make([]music.Album, len(items))
+	copy(out, items)
+	sort.Slice(out, func(i, j int) bool {
+		ni, nj := strings.ToLower(out[i].Name), strings.ToLower(out[j].Name)
+		if ni != nj {
+			if order == sortDesc {
+				return ni > nj
+			}
+			return ni < nj
+		}
+		ai, aj := strings.ToLower(out[i].AlbumArtist), strings.ToLower(out[j].AlbumArtist)
+		if order == sortDesc {
+			return ai > aj
+		}
+		return ai < aj
+	})
+	return out
+}
+
+func sortAlbumTracks(items []music.AlbumTrack, order sortOrder) []music.AlbumTrack {
+	if order == sortNone || len(items) == 0 {
+		return items
+	}
+	out := make([]music.AlbumTrack, len(items))
+	copy(out, items)
+	sort.Slice(out, func(i, j int) bool {
+		ni, nj := strings.ToLower(out[i].Name), strings.ToLower(out[j].Name)
+		if order == sortDesc {
+			return ni > nj
+		}
+		return ni < nj
+	})
+	return out
 }
 
 // enterFolder sets up the browse state to display a folder's contents.
@@ -216,7 +367,7 @@ func drawBrowse(b *browseState, spinnerFrame int, artwork bool, drawLine func(ro
 	// Title bar.
 	title := b.browseTitle()
 	subtitle := b.browseSubtitle()
-	titleLen := len(title)
+	titleLen := visibleLen(title)
 	pad := modalWidth - 2 - titleLen - 2
 	if pad < 0 {
 		pad = 0
@@ -293,12 +444,39 @@ func drawBrowse(b *browseState, spinnerFrame int, artwork bool, drawLine func(ro
 	drawLine(padTop+1+totalRows, modalCol,
 		"└"+bottom+"┘")
 
-	// Hint line below the modal.
-	hint := "\x1b[2mj/k move  enter select  h back  q close\x1b[0m"
-	drawLine(padTop+2+totalRows, modalCol, truncateVisible(hint, modalWidth))
+	// Search bar above the modal (render at padTop-1 if search is active).
+	if b.SearchActive || b.SearchQuery != "" {
+		searchLine := "\x1b[33m" + iconSearch + "  " + b.SearchQuery
+		if b.SearchActive {
+			searchLine += "█"
+		}
+		searchLine = truncateVisible(searchLine, modalWidth)
+		searchLine += "\x1b[0m"
+		pad := modalWidth - visibleLen(searchLine)
+		if pad < 0 {
+			pad = 0
+		}
+		drawLine(padTop-1, modalCol, searchLine+strings.Repeat(" ", pad))
+	} else {
+		drawLine(padTop-1, modalCol, strings.Repeat(" ", modalWidth))
+	}
+
+	// Hint lines below the modal.
+	var hints []string
+	if b.SearchActive {
+		hints = []string{"[type] search", "[enter] confirm", "[esc] clear"}
+	} else {
+		hints = []string{"[j|k] move", "[/] search", "[a|d] sort", "[enter] select", "[h] back", "[x] close"}
+	}
+	drawHints(hints, modalWidth, padTop+2+totalRows, modalCol, drawLine)
 }
 
-const iconFolder = "\U000F024B" // 󰉋 nf-md-folder
+const (
+	iconFolder         = "\U000F024B" // 󰉋 nf-md-folder
+	iconPlaylistMusic  = "\U000F0CB8" // 󰲸 nf-md-playlist_music
+	iconLibrary        = "\uEB9C"     //  nf-cod-library
+	iconSearch         = "\uF002"     //  nf-fa-search
+)
 
 // playlistLabel formats a playlist item, showing a folder icon for folders.
 func playlistLabel(p music.Playlist) string {
@@ -312,26 +490,28 @@ func playlistLabel(p music.Playlist) string {
 func browseItemLabel(b *browseState, idx int) string {
 	switch b.Screen {
 	case browsePlaylists:
-		items := filterPlaylistsByParent(b.Playlists, "")
+		items := visiblePlaylists(b)
 		if idx < len(items) {
 			return playlistLabel(items[idx])
 		}
 	case browseFolder:
-		if idx < len(b.FolderItems) {
-			return playlistLabel(b.FolderItems[idx])
+		items := visibleFolderItems(b)
+		if idx < len(items) {
+			return playlistLabel(items[idx])
 		}
 	case browseAlbums:
-		if idx < len(b.Albums) {
-			a := b.Albums[idx]
+		items := visibleAlbums(b)
+		if idx < len(items) {
+			a := items[idx]
 			return fmt.Sprintf("%s — %s", a.Name, a.AlbumArtist)
 		}
 	case browseAlbumTracks:
-		if idx < len(b.AlbumTracks) {
-			t := b.AlbumTracks[idx]
+		items := visibleAlbumTracks(b)
+		if idx < len(items) {
+			t := items[idx]
 			return fmt.Sprintf("%2d. %s", t.TrackNumber, t.Name)
 		}
 	default:
-		// Root items.
 		switch idx {
 		case rootItemPlaylists:
 			return "Playlists"
@@ -358,9 +538,10 @@ func browseEmptyMessage(screen browseScreen) string {
 	}
 }
 
-// visibleLen counts the visible (non-ANSI-escape) character count of a string.
+// visibleLen counts the visible terminal cell width of a string,
+// correctly handling ANSI escapes and wide characters (emojis).
 func visibleLen(s string) int {
-	var visible int
+	var width int
 	var inEsc bool
 	for _, r := range s {
 		if r == '\x1b' {
@@ -373,9 +554,9 @@ func visibleLen(s string) int {
 			}
 			continue
 		}
-		visible++
+		width += runewidth.RuneWidth(r)
 	}
-	return visible
+	return width
 }
 
 // browseMoveCursor moves the cursor up or down within the current list.
@@ -392,4 +573,84 @@ func browseMoveCursor(b *browseState, delta int) {
 	if list.Cursor >= count {
 		list.Cursor = count - 1
 	}
+}
+
+// browseSelectedPlaylist returns the playlist at the cursor on the playlists screen.
+func browseSelectedPlaylist(b *browseState) (music.Playlist, bool) {
+	items := visiblePlaylists(b)
+	if b.PlaylistsView.Cursor < len(items) {
+		return items[b.PlaylistsView.Cursor], true
+	}
+	return music.Playlist{}, false
+}
+
+// browseSelectedFolderItem returns the playlist at the cursor on the folder screen.
+func browseSelectedFolderItem(b *browseState) (music.Playlist, bool) {
+	items := visibleFolderItems(b)
+	if b.FolderView.Cursor < len(items) {
+		return items[b.FolderView.Cursor], true
+	}
+	return music.Playlist{}, false
+}
+
+// browseSelectedAlbum returns the album at the cursor on the albums screen.
+func browseSelectedAlbum(b *browseState) (music.Album, bool) {
+	items := visibleAlbums(b)
+	if b.AlbumsView.Cursor < len(items) {
+		return items[b.AlbumsView.Cursor], true
+	}
+	return music.Album{}, false
+}
+
+// drawHints renders hint items below the modal, wrapping to two lines if needed.
+// Items are joined with double-space separators and centered under the modal width.
+func drawHints(items []string, modalWidth, row, col int, drawLine func(row, col int, s string)) {
+	sep := "  "
+	joined := strings.Join(items, sep)
+	if len(joined) <= modalWidth {
+		// Single line, centered.
+		pad := modalWidth - len(joined)
+		left := pad / 2
+		line := "\x1b[2m" + strings.Repeat(" ", left) + joined + strings.Repeat(" ", pad-left) + "\x1b[0m"
+		drawLine(row, col, line)
+		drawLine(row+1, col, strings.Repeat(" ", modalWidth))
+		return
+	}
+
+	// Split into two lines: greedily fill line 1, then line 2.
+	var line1, line2 []string
+	width1 := 0
+	for i, item := range items {
+		itemLen := len(item)
+		needed := itemLen
+		if width1 > 0 {
+			needed += len(sep)
+		}
+		if width1+needed > modalWidth {
+			line2 = items[i:]
+			break
+		}
+		line1 = append(line1, item)
+		width1 += needed
+	}
+	if len(line2) == 0 {
+		line1 = items
+	}
+
+	for li, parts := range [][]string{line1, line2} {
+		text := strings.Join(parts, sep)
+		pad := modalWidth - len(text)
+		if pad < 0 {
+			pad = 0
+		}
+		left := pad / 2
+		line := "\x1b[2m" + strings.Repeat(" ", left) + text + strings.Repeat(" ", pad-left) + "\x1b[0m"
+		drawLine(row+li, col, line)
+	}
+}
+
+// clearSearch resets search state and cursor position.
+func clearSearch(b *browseState) {
+	b.SearchQuery = ""
+	b.SearchActive = false
 }
