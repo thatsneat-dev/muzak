@@ -1,5 +1,5 @@
 <div align="center">
-    <img src=".github/assets/muzak.png" alt="muzak icon">
+    <img src=".github/assets/muzak.png" alt="muzak icon" style="width: auto; height: 60%;">
     <br/>
     <h1>muzak</h1>
 </div>
@@ -57,19 +57,19 @@ vim-style keybindings.
 
 ## Keybindings
 
-| Key     | Action                                       |
-| ------- | -------------------------------------------- |
-| `space` | Toggle play/pause                            |
-| `h`     | Restart track (or previous track if < 3s in) |
-| `l`     | Next track                                   |
-| `k`     | Volume up                                    |
-| `j`     | Volume down                                  |
-| `s`     | Toggle shuffle                               |
-| `r`     | Cycle repeat mode                            |
-| `q`     | Open queue overlay                           |
-| `b`     | Browse playlists and library                 |
-| `x`     | Quit                                         |
-| `Ctrl+C`| Quit                                         |
+| Key      | Action                                       |
+| -------- | -------------------------------------------- |
+| `space`  | Toggle play/pause                            |
+| `h`      | Restart track (or previous track if < 3s in) |
+| `l`      | Next track                                   |
+| `k`      | Volume up                                    |
+| `j`      | Volume down                                  |
+| `s`      | Toggle shuffle                               |
+| `r`      | Cycle repeat mode                            |
+| `q`      | Open queue overlay                           |
+| `b`      | Browse playlists and library                 |
+| `x`      | Quit                                         |
+| `Ctrl+C` | Quit                                         |
 
 ## Requirements
 
