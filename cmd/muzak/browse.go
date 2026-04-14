@@ -298,10 +298,12 @@ func drawBrowse(b *browseState, spinnerFrame int, artwork bool, drawLine func(ro
 	drawLine(padTop+2+totalRows, modalCol, truncateVisible(hint, modalWidth))
 }
 
+const iconFolder = "\U000F024B" // 󰉋 nf-md-folder
+
 // playlistLabel formats a playlist item, showing a folder icon for folders.
 func playlistLabel(p music.Playlist) string {
-	if p.SpecialKind == "folder" {
-		return fmt.Sprintf("📁 %s", p.Name)
+	if p.IsFolder() {
+		return iconFolder + "  " + p.Name
 	}
 	return fmt.Sprintf("%s  \x1b[2m(%d)\x1b[0m", p.Name, p.TrackCount)
 }

@@ -662,7 +662,7 @@ func main() {
 						idx := browse.PlaylistsView.Cursor
 						if !browse.PlaylistsLoading && idx < len(topLevel) {
 							p := topLevel[idx]
-							if p.SpecialKind == "folder" {
+							if p.IsFolder() {
 								enterFolder(&browse, p)
 								drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
 							} else {
@@ -675,7 +675,7 @@ func main() {
 						idx := browse.FolderView.Cursor
 						if idx < len(browse.FolderItems) {
 							p := browse.FolderItems[idx]
-							if p.SpecialKind == "folder" {
+							if p.IsFolder() {
 								enterFolder(&browse, p)
 								drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
 							} else {

@@ -34,6 +34,11 @@ type Playlist struct {
 	ParentID     string `json:"parentID"`
 }
 
+// IsFolder reports whether this playlist is a folder.
+func (p Playlist) IsFolder() bool {
+	return p.SpecialKind == "folder"
+}
+
 // Album holds metadata about a library album.
 type Album struct {
 	Name        string `json:"name"`
