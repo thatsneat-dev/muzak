@@ -16,7 +16,7 @@ func (a *app) handleKey(key byte) bool {
 	// Global keys.
 	if key == 3 { // Ctrl+C
 		if a.overlayMode != "" {
-			fmt.Fprint(a.out, "\x1b[2J\x1b[H")
+			_, _ = fmt.Fprint(a.out, "\x1b[2J\x1b[H")
 		} else {
 			a.quit()
 		}
@@ -179,21 +179,21 @@ func (a *app) handleBrowseSelect() {
 			browse.EnterFolder(&a.browseState, p)
 			a.drawBrowse()
 		} else {
-			go music.PlayPlaylist(a.ctx, p.PersistentID)
+			go func() { _ = music.PlayPlaylist(a.ctx, p.PersistentID) }()
 			a.exitOverlay()
 			ui.SafeReset(a.refresh, 500*time.Millisecond)
-		}
-	case browse.ScreenFolder:
-		p, ok := browse.SelectedFolderItem(&a.browseState)
-		if !ok {
-			return
-		}
-		if p.IsFolder() {
-			browse.ClearSearch(&a.browseState)
-			browse.EnterFolder(&a.browseState, p)
-			a.drawBrowse()
-		} else {
-			go music.PlayPlaylist(a.ctx, p.PersistentID)
+			}
+			case browse.ScreenFolder:
+			p, ok := browse.SelectedFolderItem(&a.browseState)
+			if !ok {
+				return
+			}
+			if p.IsFolder() {
+				browse.ClearSearch(&a.browseState)
+				browse.EnterFolder(&a.browseState, p)
+				a.drawBrowse()
+			} else {
+				go func() { _ = music.PlayPlaylist(a.ctx, p.PersistentID) }()
 			a.exitOverlay()
 			ui.SafeReset(a.refresh, 500*time.Millisecond)
 		}
@@ -216,7 +216,7 @@ func (a *app) handleBrowseSelect() {
 			return
 		}
 		al := a.browseState.SelectedAlbum
-		go music.PlayAlbum(a.ctx, al.Name, al.AlbumArtist)
+		go func() { _ = music.PlayAlbum(a.ctx, al.Name, al.AlbumArtist) }()
 		a.exitOverlay()
 		ui.SafeReset(a.refresh, 500*time.Millisecond)
 	}
@@ -230,7 +230,7 @@ func (a *app) handleNowPlayingKey(key byte) bool {
 		a.quit()
 		return true
 	case ' ':
-		go music.PlayPause(a.ctx)
+		go func() { _ = music.PlayPause(a.ctx) }()
 		if a.latestInfo != nil {
 			a.latestInfo.Playing = !a.latestInfo.Playing
 		}
@@ -238,15 +238,15 @@ func (a *app) handleNowPlayingKey(key byte) bool {
 		a.redrawControls()
 		ui.SafeReset(a.flashTimer, 500*time.Millisecond)
 	case 'l':
-		go music.NextTrack(a.ctx)
+		go func() { _ = music.NextTrack(a.ctx) }()
 		a.flashIcon = "next"
 		a.redrawControls()
 		ui.SafeReset(a.flashTimer, 500*time.Millisecond)
 	case 'h':
 		if a.latestInfo != nil && a.latestInfo.Position > ui.RestartThreshold {
-			go music.RestartTrack(a.ctx)
+			go func() { _ = music.RestartTrack(a.ctx) }()
 		} else {
-			go music.PreviousTrack(a.ctx)
+			go func() { _ = music.PreviousTrack(a.ctx) }()
 		}
 		a.flashIcon = "prev"
 		a.redrawControls()

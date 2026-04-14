@@ -139,7 +139,7 @@ func (a *app) startPoll() {
 	if a.pollRunning {
 		return
 	}
-	os.Truncate(a.artworkPath, 0)
+	_ = os.Truncate(a.artworkPath, 0)
 	a.pollRunning = true
 	go func() {
 		info, err := music.NowPlaying(a.ctx, a.artworkPath)
@@ -182,14 +182,14 @@ func (a *app) redrawControls() {
 	startRow := ui.PadTop + (a.layout.ArtworkRows-ui.NumTextLines)/2
 	controlRow := startRow + ui.NumTextLines - 1
 	colOffset := a.layout.TextCol(a.hasArtwork)
-	fmt.Fprint(a.out, "\x1b8")
+	_, _ = fmt.Fprint(a.out, "\x1b8")
 	if controlRow > 0 {
-		fmt.Fprintf(a.out, "\x1b[%dB", controlRow)
+		_, _ = fmt.Fprintf(a.out, "\x1b[%dB", controlRow)
 	}
 	if colOffset > 0 {
-		fmt.Fprintf(a.out, "\x1b[%dC", colOffset)
+		_, _ = fmt.Fprintf(a.out, "\x1b[%dC", colOffset)
 	}
-	fmt.Fprintf(a.out, "\x1b[K%s", ui.ControlsLine(a.latestInfo.Playing, a.flashIcon, a.shuffleOn, a.repeatMode))
+	_, _ = fmt.Fprintf(a.out, "\x1b[K%s", ui.ControlsLine(a.latestInfo.Playing, a.flashIcon, a.shuffleOn, a.repeatMode))
 }
 
 var noTrackLines = []string{
@@ -226,7 +226,7 @@ func (a *app) handlePollInfo(info *music.TrackInfo) {
 
 		if a.hasArtwork {
 			if pngData, err := os.ReadFile(a.artworkPath); err == nil && len(pngData) > 0 {
-				fmt.Fprintf(a.out, "\x1b8\x1b[%dB\x1b[%dC", ui.PadTop, a.layout.ArtworkLeft())
+				_, _ = fmt.Fprintf(a.out, "\x1b8\x1b[%dB\x1b[%dC", ui.PadTop, a.layout.ArtworkLeft())
 				ui.SendKittyImage(a.out, a.layout, pngData)
 			}
 		}
@@ -255,14 +255,14 @@ func (a *app) exitOverlay() {
 	a.spinnerTicker.Stop()
 	colOffset := a.layout.TextCol(a.hasArtwork)
 	for i := range a.layout.DisplayRows() + 3 {
-		fmt.Fprint(a.out, "\x1b8")
+		_, _ = fmt.Fprint(a.out, "\x1b8")
 		if i > 0 {
-			fmt.Fprintf(a.out, "\x1b[%dB", i)
+			_, _ = fmt.Fprintf(a.out, "\x1b[%dB", i)
 		}
 		if colOffset > 0 {
-			fmt.Fprintf(a.out, "\x1b[%dC", colOffset)
+			_, _ = fmt.Fprintf(a.out, "\x1b[%dC", colOffset)
 		}
-		fmt.Fprint(a.out, "\x1b[K")
+		_, _ = fmt.Fprint(a.out, "\x1b[K")
 	}
 	if a.latestInfo != nil {
 		lines := ui.BuildLines(a.latestInfo, a.layout, a.hasArtwork, a.nowPlayingOpts())
@@ -338,7 +338,7 @@ func (a *app) fetchAlbumTracks(album *music.Album) {
 // quit handles the exit sequence.
 func (a *app) quit() {
 	if a.spaceAllocated {
-		fmt.Fprint(a.out, "\x1b8")
-		fmt.Fprintf(a.out, "\x1b[%dB\r\n", a.layout.DisplayRows())
+		_, _ = fmt.Fprint(a.out, "\x1b8")
+		_, _ = fmt.Fprintf(a.out, "\x1b[%dB\r\n", a.layout.DisplayRows())
 	}
 }

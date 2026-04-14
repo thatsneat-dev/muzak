@@ -17,14 +17,14 @@ type LineDrawer func(row, col int, s string)
 // NewLineDrawer returns a LineDrawer that uses ANSI cursor save/restore.
 func NewLineDrawer(w io.Writer) LineDrawer {
 	return func(row, col int, s string) {
-		fmt.Fprint(w, "\x1b8")
+		_, _ = fmt.Fprint(w, "\x1b8")
 		if row > 0 {
-			fmt.Fprintf(w, "\x1b[%dB", row)
+			_, _ = fmt.Fprintf(w, "\x1b[%dB", row)
 		}
 		if col > 0 {
-			fmt.Fprintf(w, "\x1b[%dC", col)
+			_, _ = fmt.Fprintf(w, "\x1b[%dC", col)
 		}
-		fmt.Fprintf(w, "\x1b[K%s", s)
+		_, _ = fmt.Fprintf(w, "\x1b[K%s", s)
 	}
 }
 
@@ -36,18 +36,18 @@ func DrawText(w io.Writer, layout Layout, lines []string, withArtwork bool) {
 	maxWidth := layout.TextWidth(withArtwork)
 
 	for i, line := range lines {
-		fmt.Fprint(w, "\x1b8")
+		_, _ = fmt.Fprint(w, "\x1b8")
 		row := startRow + i
 		if row > 0 {
-			fmt.Fprintf(w, "\x1b[%dB", row)
+			_, _ = fmt.Fprintf(w, "\x1b[%dB", row)
 		}
 		if colOffset > 0 {
-			fmt.Fprintf(w, "\x1b[%dC", colOffset)
+			_, _ = fmt.Fprintf(w, "\x1b[%dC", colOffset)
 		}
 		if maxWidth > 0 {
 			line = TruncateVisible(line, maxWidth)
 		}
-		fmt.Fprintf(w, "\x1b[K%s", line)
+		_, _ = fmt.Fprintf(w, "\x1b[K%s", line)
 	}
 }
 
@@ -58,19 +58,19 @@ func UpdateDynamicLines(w io.Writer, layout Layout, lines []string, withArtwork 
 	maxWidth := layout.TextWidth(withArtwork)
 
 	for i := 2; i < len(lines); i++ {
-		fmt.Fprint(w, "\x1b8")
+		_, _ = fmt.Fprint(w, "\x1b8")
 		row := startRow + i
 		if row > 0 {
-			fmt.Fprintf(w, "\x1b[%dB", row)
+			_, _ = fmt.Fprintf(w, "\x1b[%dB", row)
 		}
 		if colOffset > 0 {
-			fmt.Fprintf(w, "\x1b[%dC", colOffset)
+			_, _ = fmt.Fprintf(w, "\x1b[%dC", colOffset)
 		}
 		line := lines[i]
 		if maxWidth > 0 {
 			line = TruncateVisible(line, maxWidth)
 		}
-		fmt.Fprintf(w, "\x1b[K%s", line)
+		_, _ = fmt.Fprintf(w, "\x1b[K%s", line)
 	}
 }
 
@@ -141,29 +141,29 @@ func DrawVolumeBar(w io.Writer, layout Layout, vol float32, flash string) {
 	empty := barRows - filled
 
 	for i := range layout.ArtworkRows {
-		fmt.Fprint(w, "\x1b8")
+		_, _ = fmt.Fprint(w, "\x1b8")
 		row := PadTop + i
 		if row > 0 {
-			fmt.Fprintf(w, "\x1b[%dB", row)
+			_, _ = fmt.Fprintf(w, "\x1b[%dB", row)
 		}
-		fmt.Fprintf(w, "\x1b[%dC", PadLeft)
+		_, _ = fmt.Fprintf(w, "\x1b[%dC", PadLeft)
 		switch {
 		case i == 0:
 			icon := IconVolHigh
 			if flash == "volup" {
 				icon = Yellow + icon + Reset
 			}
-			fmt.Fprint(w, icon)
+			_, _ = fmt.Fprint(w, icon)
 		case i == layout.ArtworkRows-1:
 			icon := IconVolOff
 			if flash == "voldn" {
 				icon = Yellow + icon + Reset
 			}
-			fmt.Fprint(w, icon)
+			_, _ = fmt.Fprint(w, icon)
 		case i-1 < empty:
-			fmt.Fprint(w, "░")
+			_, _ = fmt.Fprint(w, "░")
 		default:
-			fmt.Fprint(w, "█")
+			_, _ = fmt.Fprint(w, "█")
 		}
 	}
 }
@@ -176,21 +176,21 @@ func SendKittyImage(w *os.File, layout Layout, pngData []byte) {
 	b64 := base64.StdEncoding.EncodeToString(pngData)
 
 	if len(b64) <= chunkSize {
-		fmt.Fprintf(w, "\x1b_Ga=T,f=100,c=%d,r=%d,q=2;%s\x1b\\",
+		_, _ = fmt.Fprintf(w, "\x1b_Ga=T,f=100,c=%d,r=%d,q=2;%s\x1b\\",
 			layout.ArtworkCols, layout.ArtworkRows, b64)
 		return
 	}
 
-	fmt.Fprintf(w, "\x1b_Ga=T,f=100,c=%d,r=%d,q=2,m=1;%s\x1b\\",
+	_, _ = fmt.Fprintf(w, "\x1b_Ga=T,f=100,c=%d,r=%d,q=2,m=1;%s\x1b\\",
 		layout.ArtworkCols, layout.ArtworkRows, b64[:chunkSize])
 	b64 = b64[chunkSize:]
 
 	for len(b64) > chunkSize {
-		fmt.Fprintf(w, "\x1b_Gm=1;%s\x1b\\", b64[:chunkSize])
+		_, _ = fmt.Fprintf(w, "\x1b_Gm=1;%s\x1b\\", b64[:chunkSize])
 		b64 = b64[chunkSize:]
 	}
 
-	fmt.Fprintf(w, "\x1b_Gm=0;%s\x1b\\", b64)
+	_, _ = fmt.Fprintf(w, "\x1b_Gm=0;%s\x1b\\", b64)
 }
 
 // QueueViewModel holds the state needed to render the queue modal.
@@ -271,22 +271,22 @@ func DrawQueue(layout Layout, hasArtwork bool, q QueueViewModel, drawLine LineDr
 
 // AllocateSpace clears the screen and reserves space for the display area.
 func AllocateSpace(w io.Writer, layout Layout) {
-	fmt.Fprint(w, "\x1b[2J\x1b[3J\x1b[H")
+	_, _ = fmt.Fprint(w, "\x1b[2J\x1b[3J\x1b[H")
 	for range layout.DisplayRows() {
-		fmt.Fprint(w, "\r\n")
+		_, _ = fmt.Fprint(w, "\r\n")
 	}
-	fmt.Fprintf(w, "\x1b[%dA", layout.DisplayRows())
-	fmt.Fprint(w, "\x1b7")
+	_, _ = fmt.Fprintf(w, "\x1b[%dA", layout.DisplayRows())
+	_, _ = fmt.Fprint(w, "\x1b7")
 }
 
 // ClearDisplay clears all rows in the display area and removes any Kitty images.
 func ClearDisplay(w io.Writer, layout Layout) {
-	fmt.Fprint(w, "\x1b8")
-	fmt.Fprint(w, "\x1b_Ga=d,d=a\x1b\\")
+	_, _ = fmt.Fprint(w, "\x1b8")
+	_, _ = fmt.Fprint(w, "\x1b_Ga=d,d=a\x1b\\")
 	for range layout.DisplayRows() {
-		fmt.Fprint(w, "\x1b[2K\x1b[1B")
+		_, _ = fmt.Fprint(w, "\x1b[2K\x1b[1B")
 	}
-	fmt.Fprint(w, "\x1b8")
+	_, _ = fmt.Fprint(w, "\x1b8")
 }
 
 // SafeReset stops the timer, drains any pending event, and resets it.

@@ -21,6 +21,7 @@ var out = os.Stdout
 
 // version is set at build time via -ldflags "-X main.version=...".
 var version = "dev"
+var _ = version
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -31,7 +32,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error setting raw mode: %v\n", err)
 		os.Exit(1)
 	}
-	defer term.Restore(int(os.Stdin.Fd()), oldState)
+	defer func() { _ = term.Restore(int(os.Stdin.Fd()), oldState) }()
 
 	tmp, err := os.CreateTemp("", "tty-graphics-protocol-*.png")
 	if err != nil {
@@ -39,13 +40,13 @@ func main() {
 		os.Exit(1)
 	}
 	artworkPath := tmp.Name()
-	tmp.Close()
-	defer os.Remove(artworkPath)
+	_ = tmp.Close()
+	defer func() { _ = os.Remove(artworkPath) }()
 
 	layout := ui.DetectLayout(os.Stdin.Fd(), out.Fd())
 
-	fmt.Fprint(out, "\x1b[?1049h\x1b[?25l")
-	defer fmt.Fprint(out, "\x1b[?25h\x1b[?1049l")
+	_, _ = fmt.Fprint(out, "\x1b[?1049h\x1b[?25l")
+	defer func() { _, _ = fmt.Fprint(out, "\x1b[?25h\x1b[?1049l") }()
 
 	winch := make(chan os.Signal, 1)
 	signal.Notify(winch, syscall.SIGWINCH)
@@ -66,7 +67,7 @@ func main() {
 	a := newApp(ctx, out, artworkPath, layout, keys, winch)
 	defer a.cleanup()
 
-	go music.Launch(ctx)
+	go func() { _ = music.Launch(ctx) }()
 
 	if on, err := music.ShuffleEnabled(ctx); err == nil {
 		a.shuffleOn = on
