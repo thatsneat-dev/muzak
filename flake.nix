@@ -27,9 +27,18 @@
         packages.muzak = pkgs.buildGoModule {
           pname = "muzak";
           inherit version;
-          src = ./.;
+          src = pkgs.lib.fileset.toSource {
+            root = ./.;
+            fileset = pkgs.lib.fileset.unions [
+              ./cmd
+              ./internal
+              ./go.mod
+              ./go.sum
+              ./VERSION
+            ];
+          };
 
-          vendorHash = "sha256-MfLqBb2Z3R3uRUOvcVhBeyUHTA9NtJ/sL+GTgojo6Ik=";
+          vendorHash = "sha256-D5TnGKBhKrv+sP3kOEj92zfAa8jg76OhpQrpDxFXf0U=";
 
           subPackages = ["cmd/muzak"];
 
