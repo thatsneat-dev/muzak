@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/mattn/go-runewidth"
 )
@@ -39,7 +40,7 @@ func TruncateVisible(s string, maxWidth int) string {
 		}
 		width += rw
 		if width <= maxWidth-1 {
-			ellCut = i + len(string(r))
+			ellCut = i + utf8.RuneLen(r)
 		}
 	}
 	if !hasMore {

@@ -57,13 +57,33 @@ on run argv
 	end tell
 end run
 
+on toHexByte(n)
+	set hexChars to "0123456789ABCDEF"
+	set highDigit to (n div 16) + 1
+	set lowDigit to (n mod 16) + 1
+	return character highDigit of hexChars & character lowDigit of hexChars
+end toHexByte
+
 on escapeJSON(str)
 	set output to ""
 	repeat with c in characters of str
+		set charCode to id of c
 		if c is "\"" then
 			set output to output & "\\\""
 		else if c is "\\" then
 			set output to output & "\\\\"
+		else if charCode is 8 then
+			set output to output & "\\b"
+		else if charCode is 9 then
+			set output to output & "\\t"
+		else if charCode is 10 then
+			set output to output & "\\n"
+		else if charCode is 12 then
+			set output to output & "\\f"
+		else if charCode is 13 then
+			set output to output & "\\r"
+		else if charCode < 32 then
+			set output to output & "\\u00" & my toHexByte(charCode)
 		else
 			set output to output & c
 		end if

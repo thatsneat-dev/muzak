@@ -280,6 +280,9 @@ func (a *app) handleNowPlayingKey(key byte) bool {
 		a.queueScroll = 0
 		a.queueLoading = true
 		a.spinnerFrame = 0
+		if !a.spaceAllocated {
+			a.allocateSpace()
+		}
 		a.drawQueue()
 		a.spinnerTicker.Reset(100 * time.Millisecond)
 		go func() {
