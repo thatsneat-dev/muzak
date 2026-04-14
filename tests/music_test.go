@@ -118,6 +118,14 @@ func TestParsePlaylists(t *testing.T) {
 			},
 		},
 		{
+			name:  "playlists with folders and parentID",
+			input: `[{"name":"Rock","persistentID":"F01","specialKind":"folder","trackCount":0,"parentID":""},{"name":"Classic Rock","persistentID":"P01","specialKind":"none","trackCount":50,"parentID":"F01"}]`,
+			expected: []music.Playlist{
+				{Name: "Rock", PersistentID: "F01", SpecialKind: "folder", TrackCount: 0, ParentID: ""},
+				{Name: "Classic Rock", PersistentID: "P01", SpecialKind: "none", TrackCount: 50, ParentID: "F01"},
+			},
+		},
+		{
 			name:     "empty array",
 			input:    `[]`,
 			expected: []music.Playlist{},

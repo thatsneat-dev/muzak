@@ -15,6 +15,7 @@ const (
 	browsePlaylists
 	browseAlbums
 	browseAlbumTracks
+	browseFolder
 )
 
 // listState tracks cursor and scroll position for a scrollable list.
@@ -31,6 +32,7 @@ type browseState struct {
 	PlaylistsView listState
 	AlbumsView    listState
 	TracksView    listState
+	FolderView    listState
 
 	Playlists []music.Playlist
 	Albums    []music.Album
@@ -38,6 +40,12 @@ type browseState struct {
 	SelectedAlbum  *music.Album
 	AlbumTracks    []music.AlbumTrack
 	AlbumTrackCache map[string][]music.AlbumTrack
+
+	// Folder navigation: stack of parent IDs for back-navigation.
+	FolderStack   []string // stack of parent folder IDs
+	FolderID      string   // current folder's persistent ID (empty = top-level)
+	FolderName    string   // current folder's display name
+	FolderItems   []music.Playlist // filtered playlists in the current folder
 
 	PlaylistsLoading bool
 	PlaylistsLoaded  bool
@@ -59,6 +67,11 @@ func (b *browseState) browseTitle() string {
 	switch b.Screen {
 	case browsePlaylists:
 		return "Playlists"
+	case browseFolder:
+		if b.FolderName != "" {
+			return b.FolderName
+		}
+		return "Folder"
 	case browseAlbums:
 		return "Library"
 	case browseAlbumTracks:
@@ -84,6 +97,8 @@ func (b *browseState) currentList() *listState {
 	switch b.Screen {
 	case browsePlaylists:
 		return &b.PlaylistsView
+	case browseFolder:
+		return &b.FolderView
 	case browseAlbums:
 		return &b.AlbumsView
 	case browseAlbumTracks:
@@ -97,7 +112,9 @@ func (b *browseState) currentList() *listState {
 func (b *browseState) itemCount() int {
 	switch b.Screen {
 	case browsePlaylists:
-		return len(b.Playlists)
+		return len(filterPlaylistsByParent(b.Playlists, ""))
+	case browseFolder:
+		return len(b.FolderItems)
 	case browseAlbums:
 		return len(b.Albums)
 	case browseAlbumTracks:
@@ -110,7 +127,7 @@ func (b *browseState) itemCount() int {
 // isLoading returns whether the current screen is loading data.
 func (b *browseState) isLoading() bool {
 	switch b.Screen {
-	case browsePlaylists:
+	case browsePlaylists, browseFolder:
 		return b.PlaylistsLoading
 	case browseAlbums:
 		return b.AlbumsLoading
@@ -124,6 +141,52 @@ func (b *browseState) isLoading() bool {
 // albumCacheKey returns a cache key for an album.
 func albumCacheKey(name, artist string) string {
 	return name + "\x00" + artist
+}
+
+// filterPlaylistsByParent returns playlists whose ParentID matches the given id.
+// For the top-level playlists view, pass "" to get playlists with no parent.
+func filterPlaylistsByParent(all []music.Playlist, parentID string) []music.Playlist {
+	var result []music.Playlist
+	for _, p := range all {
+		if p.ParentID == parentID {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+// enterFolder sets up the browse state to display a folder's contents.
+func enterFolder(b *browseState, folder music.Playlist) {
+	b.FolderStack = append(b.FolderStack, b.FolderID)
+	b.FolderID = folder.PersistentID
+	b.FolderName = folder.Name
+	b.FolderItems = filterPlaylistsByParent(b.Playlists, folder.PersistentID)
+	b.FolderView = listState{}
+	b.Screen = browseFolder
+}
+
+// exitFolder pops back to the parent folder or the top-level playlists view.
+func exitFolder(b *browseState) {
+	if len(b.FolderStack) == 0 {
+		b.Screen = browsePlaylists
+		return
+	}
+	parentID := b.FolderStack[len(b.FolderStack)-1]
+	b.FolderStack = b.FolderStack[:len(b.FolderStack)-1]
+	b.FolderID = parentID
+	if parentID == "" {
+		b.Screen = browsePlaylists
+	} else {
+		// Find the parent folder name.
+		for _, p := range b.Playlists {
+			if p.PersistentID == parentID {
+				b.FolderName = p.Name
+				break
+			}
+		}
+		b.FolderItems = filterPlaylistsByParent(b.Playlists, parentID)
+		b.FolderView = listState{}
+	}
 }
 
 // drawBrowse renders the browse modal.
@@ -235,13 +298,25 @@ func drawBrowse(b *browseState, spinnerFrame int, artwork bool, drawLine func(ro
 	drawLine(padTop+2+totalRows, modalCol, truncateVisible(hint, modalWidth))
 }
 
+// playlistLabel formats a playlist item, showing a folder icon for folders.
+func playlistLabel(p music.Playlist) string {
+	if p.SpecialKind == "folder" {
+		return fmt.Sprintf("📁 %s", p.Name)
+	}
+	return fmt.Sprintf("%s  \x1b[2m(%d)\x1b[0m", p.Name, p.TrackCount)
+}
+
 // browseItemLabel returns the display label for an item at the given index.
 func browseItemLabel(b *browseState, idx int) string {
 	switch b.Screen {
 	case browsePlaylists:
-		if idx < len(b.Playlists) {
-			p := b.Playlists[idx]
-			return fmt.Sprintf("%s  \x1b[2m(%d)\x1b[0m", p.Name, p.TrackCount)
+		items := filterPlaylistsByParent(b.Playlists, "")
+		if idx < len(items) {
+			return playlistLabel(items[idx])
+		}
+	case browseFolder:
+		if idx < len(b.FolderItems) {
+			return playlistLabel(b.FolderItems[idx])
 		}
 	case browseAlbums:
 		if idx < len(b.Albums) {
@@ -270,6 +345,8 @@ func browseEmptyMessage(screen browseScreen) string {
 	switch screen {
 	case browsePlaylists:
 		return "No playlists found."
+	case browseFolder:
+		return "Folder is empty."
 	case browseAlbums:
 		return "No albums in library."
 	case browseAlbumTracks:

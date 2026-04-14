@@ -627,6 +627,9 @@ func main() {
 					case browsePlaylists, browseAlbums:
 						browse.Screen = browseRoot
 						drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+					case browseFolder:
+						exitFolder(&browse)
+						drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
 					case browseAlbumTracks:
 						browse.Screen = browseAlbums
 						drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
@@ -644,6 +647,8 @@ func main() {
 						case rootItemPlaylists:
 							browse.Screen = browsePlaylists
 							browse.PlaylistsView = listState{}
+							browse.FolderStack = nil
+							browse.FolderID = ""
 							fetchPlaylists()
 							drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
 						case rootItemLibrary:
@@ -653,11 +658,31 @@ func main() {
 							drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
 						}
 					case browsePlaylists:
-						if !browse.PlaylistsLoading && len(browse.Playlists) > 0 {
-							p := browse.Playlists[browse.PlaylistsView.Cursor]
-							go music.PlayPlaylist(ctx, p.PersistentID)
-							exitOverlay()
-							safeReset(refresh, 500*time.Millisecond)
+						topLevel := filterPlaylistsByParent(browse.Playlists, "")
+						idx := browse.PlaylistsView.Cursor
+						if !browse.PlaylistsLoading && idx < len(topLevel) {
+							p := topLevel[idx]
+							if p.SpecialKind == "folder" {
+								enterFolder(&browse, p)
+								drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+							} else {
+								go music.PlayPlaylist(ctx, p.PersistentID)
+								exitOverlay()
+								safeReset(refresh, 500*time.Millisecond)
+							}
+						}
+					case browseFolder:
+						idx := browse.FolderView.Cursor
+						if idx < len(browse.FolderItems) {
+							p := browse.FolderItems[idx]
+							if p.SpecialKind == "folder" {
+								enterFolder(&browse, p)
+								drawBrowse(&browse, spinnerFrame, hasArtwork, drawModalLine)
+							} else {
+								go music.PlayPlaylist(ctx, p.PersistentID)
+								exitOverlay()
+								safeReset(refresh, 500*time.Millisecond)
+							}
 						}
 					case browseAlbums:
 						if !browse.AlbumsLoading && len(browse.Albums) > 0 {

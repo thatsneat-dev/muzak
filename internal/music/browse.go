@@ -31,6 +31,7 @@ type Playlist struct {
 	PersistentID string `json:"persistentID"`
 	SpecialKind  string `json:"specialKind"`
 	TrackCount   int    `json:"trackCount"`
+	ParentID     string `json:"parentID"`
 }
 
 // Album holds metadata about a library album.
