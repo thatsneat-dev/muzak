@@ -57,6 +57,13 @@
             statix
             deadnix
           ];
+
+          shellHook = ''
+            _user_shell=$(dscl . -read /Users/"$USER" UserShell 2>/dev/null | awk '{print $2}')
+            if [[ "$_user_shell" == */zsh ]]; then
+              exec zsh
+            fi
+          '';
         };
 
         apps.muzak = {
