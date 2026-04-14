@@ -46,8 +46,8 @@
           };
         };
 
-        devShells.default = pkgs.mkShell {
-          packages = with pkgs; [
+        devShells = let
+          devPackages = with pkgs; [
             go
             just
             gofumpt
@@ -57,13 +57,15 @@
             statix
             deadnix
           ];
-
-          shellHook = ''
-            _user_shell=$(dscl . -read /Users/"$USER" UserShell 2>/dev/null | awk '{print $2}')
-            if [[ "$_user_shell" == */zsh ]]; then
+        in {
+          default = pkgs.mkShell {packages = devPackages;};
+          bash = pkgs.mkShell {packages = devPackages;};
+          zsh = pkgs.mkShell {
+            packages = devPackages;
+            shellHook = ''
               exec zsh
-            fi
-          '';
+            '';
+          };
         };
 
         apps.muzak = {
