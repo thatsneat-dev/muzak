@@ -173,6 +173,14 @@ func (a *app) run() {
 			if a.overlayMode == "browse" {
 				a.drawBrowse()
 			}
+		case songs := <-a.catalogCh:
+			a.browseState.CatalogLoading = false
+			if songs != nil {
+				a.browseState.CatalogResults = songs
+			}
+			if a.overlayMode == "browse" {
+				a.drawBrowse()
+			}
 		case <-a.winch:
 			a.layout = ui.DetectLayout(os.Stdin.Fd(), out.Fd())
 			a.currentTrack = ""

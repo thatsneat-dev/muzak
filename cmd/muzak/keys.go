@@ -63,6 +63,10 @@ func (a *app) handleQueueKey(key byte) {
 
 // handleBrowseKey handles keys while the browse overlay is active.
 func (a *app) handleBrowseKey(key byte) {
+	if a.browseState.Screen == browse.ScreenCatalogSearch {
+		a.handleCatalogSearchKey(key)
+		return
+	}
 	if a.browseState.SearchActive {
 		a.handleBrowseSearchKey(key)
 		return
@@ -91,6 +95,9 @@ func (a *app) handleBrowseKey(key byte) {
 		case browse.ScreenAlbumTracks:
 			a.browseState.Screen = browse.ScreenAlbums
 			a.drawBrowse()
+		case browse.ScreenCatalogResults:
+			a.browseState.Screen = browse.ScreenRoot
+			a.drawBrowse()
 		}
 	case 'j':
 		browse.MoveCursor(&a.browseState, 1)
@@ -101,19 +108,23 @@ func (a *app) handleBrowseKey(key byte) {
 	case '\r', '\n', 'l':
 		a.handleBrowseSelect()
 	case 'a':
-		if a.browseState.Screen != browse.ScreenRoot && !a.browseState.SearchActive {
+		if a.browseState.Screen != browse.ScreenRoot && a.browseState.Screen != browse.ScreenCatalogResults && !a.browseState.SearchActive {
 			a.browseState.Sort = browse.SortAsc
 			*a.browseState.CurrentList() = browse.ListState{}
 			a.drawBrowse()
 		}
 	case 'd':
-		if a.browseState.Screen != browse.ScreenRoot && !a.browseState.SearchActive {
+		if a.browseState.Screen != browse.ScreenRoot && a.browseState.Screen != browse.ScreenCatalogResults && !a.browseState.SearchActive {
 			a.browseState.Sort = browse.SortDesc
 			*a.browseState.CurrentList() = browse.ListState{}
 			a.drawBrowse()
 		}
 	case '/':
-		if a.browseState.Screen != browse.ScreenRoot && !a.browseState.SearchActive {
+		if a.browseState.Screen == browse.ScreenCatalogResults {
+			a.browseState.Screen = browse.ScreenCatalogSearch
+			a.browseState.CatalogQuery = ""
+			a.drawBrowse()
+		} else if a.browseState.Screen != browse.ScreenRoot && !a.browseState.SearchActive {
 			a.browseState.SearchActive = true
 			a.browseState.SearchQuery = ""
 			a.drawBrowse()
@@ -146,6 +157,33 @@ func (a *app) handleBrowseSearchKey(key byte) {
 	}
 }
 
+// handleCatalogSearchKey handles keys while the catalog search input is active.
+func (a *app) handleCatalogSearchKey(key byte) {
+	switch key {
+	case 27: // Escape — go back
+		a.browseState.Screen = browse.ScreenRoot
+		a.drawBrowse()
+	case '\r', '\n': // Enter — run search
+		if a.browseState.CatalogQuery != "" {
+			a.browseState.Screen = browse.ScreenCatalogResults
+			a.browseState.CatalogView = browse.ListState{}
+			a.browseState.CatalogResults = nil
+			a.fetchCatalog(a.browseState.CatalogQuery)
+			a.drawBrowse()
+		}
+	case 127, 8: // Backspace
+		if len(a.browseState.CatalogQuery) > 0 {
+			a.browseState.CatalogQuery = a.browseState.CatalogQuery[:len(a.browseState.CatalogQuery)-1]
+			a.drawBrowse()
+		}
+	default:
+		if key >= 32 && key <= 126 {
+			a.browseState.CatalogQuery += string(rune(key))
+			a.drawBrowse()
+		}
+	}
+}
+
 // handleBrowseSelect handles enter/select in the browse modal.
 func (a *app) handleBrowseSelect() {
 	switch a.browseState.Screen {
@@ -164,6 +202,10 @@ func (a *app) handleBrowseSelect() {
 			a.browseState.Screen = browse.ScreenAlbums
 			a.browseState.AlbumsView = browse.ListState{}
 			a.fetchAlbums()
+			a.drawBrowse()
+		case browse.RootItemCatalog:
+			a.browseState.Screen = browse.ScreenCatalogSearch
+			a.browseState.CatalogQuery = ""
 			a.drawBrowse()
 		}
 	case browse.ScreenPlaylists:
@@ -219,6 +261,17 @@ func (a *app) handleBrowseSelect() {
 		go func() { _ = music.PlayAlbum(a.ctx, al.Name, al.AlbumArtist) }()
 		a.exitOverlay()
 		ui.SafeReset(a.refresh, 500*time.Millisecond)
+	case browse.ScreenCatalogResults:
+		if a.browseState.CatalogLoading {
+			return
+		}
+		idx := a.browseState.CatalogView.Cursor
+		if idx < len(a.browseState.CatalogResults) {
+			song := a.browseState.CatalogResults[idx]
+			go func() { _ = music.PlayCatalogTrack(a.ctx, song.TrackID) }()
+			a.exitOverlay()
+			ui.SafeReset(a.refresh, 1500*time.Millisecond)
+		}
 	}
 }
 

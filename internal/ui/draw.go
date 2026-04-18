@@ -313,31 +313,33 @@ func DrawHints(items []string, modalWidth, row, col int, drawLine LineDrawer) {
 		return
 	}
 
-	var line1, line2 []string
-	width1 := 0
-	for i, item := range items {
+	// Split items across two lines, fitting as many as possible per line.
+	var rows [2][]string
+	widths := [2]int{}
+	r := 0
+	for _, item := range items {
 		itemLen := len(item)
 		needed := itemLen
-		if width1 > 0 {
+		if widths[r] > 0 {
 			needed += len(sep)
 		}
-		if width1+needed > modalWidth {
-			line2 = items[i:]
-			break
+		if widths[r]+needed > modalWidth && widths[r] > 0 {
+			r++
+			if r > 1 {
+				break
+			}
+			needed = itemLen
 		}
-		line1 = append(line1, item)
-		width1 += needed
-	}
-	if len(line2) == 0 {
-		line1 = items
+		rows[r] = append(rows[r], item)
+		widths[r] += needed
 	}
 
-	for li, parts := range [][]string{line1, line2} {
+	for li, parts := range rows {
 		text := strings.Join(parts, sep)
-		pad := modalWidth - len(text)
-		if pad < 0 {
-			pad = 0
+		if len(text) > modalWidth {
+			text = text[:modalWidth]
 		}
+		pad := modalWidth - len(text)
 		left := pad / 2
 		line := "\x1b[2m" + strings.Repeat(" ", left) + text + strings.Repeat(" ", pad-left) + "\x1b[0m"
 		drawLine(row+li, col, line)

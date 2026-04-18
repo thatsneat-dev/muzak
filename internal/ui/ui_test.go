@@ -237,11 +237,16 @@ func TestDrawHintsTwoLines(t *testing.T) {
 		lines = append(lines, s)
 	}
 	items := []string{"[j|k] move", "[/] search", "[a|d] sort", "[enter] select", "[h] back", "[x] close"}
-	ui.DrawHints(items, 30, 0, 0, draw)
+	ui.DrawHints(items, 40, 0, 0, draw)
 
 	assert.Len(t, lines, 2)
 	// First line should NOT contain all items.
 	assert.NotContains(t, lines[0], "[x] close")
 	// Second line should contain the overflow items.
+	assert.Contains(t, lines[1], "[h] back")
 	assert.Contains(t, lines[1], "[x] close")
+	// Lines should not exceed modalWidth visible chars.
+	for _, l := range lines {
+		assert.LessOrEqual(t, ui.VisibleLen(l), 40)
+	}
 }

@@ -1,6 +1,9 @@
 package browse
 
-import "github.com/thatsneat-dev/muzak/internal/music"
+import (
+	"github.com/thatsneat-dev/muzak/internal/catalog"
+	"github.com/thatsneat-dev/muzak/internal/music"
+)
 
 // Screen identifies the current screen within the browse modal.
 type Screen uint8
@@ -11,6 +14,8 @@ const (
 	ScreenAlbums
 	ScreenAlbumTracks
 	ScreenFolder
+	ScreenCatalogSearch
+	ScreenCatalogResults
 )
 
 // SortOrder controls the sorting of browse lists.
@@ -31,7 +36,8 @@ type ListState struct {
 const (
 	RootItemPlaylists = 0
 	RootItemLibrary   = 1
-	RootItemCount     = 2
+	RootItemCatalog   = 2
+	RootItemCount     = 3
 )
 
 // State holds all state for the browse modal.
@@ -62,6 +68,11 @@ type State struct {
 	AlbumsLoaded     bool
 	TracksLoading    bool
 
+	CatalogView    ListState
+	CatalogQuery   string
+	CatalogResults []catalog.Song
+	CatalogLoading bool
+
 	AutoOpened bool
 
 	Sort         SortOrder
@@ -80,6 +91,8 @@ func (b *State) CurrentList() *ListState {
 		return &b.AlbumsView
 	case ScreenAlbumTracks:
 		return &b.TracksView
+	case ScreenCatalogResults:
+		return &b.CatalogView
 	default:
 		return &b.RootView
 	}
@@ -96,6 +109,8 @@ func (b *State) ItemCount() int {
 		return len(VisibleAlbums(b))
 	case ScreenAlbumTracks:
 		return len(VisibleAlbumTracks(b))
+	case ScreenCatalogResults:
+		return len(b.CatalogResults)
 	default:
 		return RootItemCount
 	}
@@ -110,6 +125,8 @@ func (b *State) IsLoading() bool {
 		return b.AlbumsLoading
 	case ScreenAlbumTracks:
 		return b.TracksLoading
+	case ScreenCatalogResults:
+		return b.CatalogLoading
 	default:
 		return false
 	}

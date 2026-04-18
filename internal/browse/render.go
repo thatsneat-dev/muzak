@@ -25,6 +25,10 @@ func title(b *State) string {
 			return b.SelectedAlbum.Name
 		}
 		return "Tracks"
+	case ScreenCatalogSearch:
+		return ui.IconMusic + " Search Catalog"
+	case ScreenCatalogResults:
+		return ui.IconMusic + " Results"
 	default:
 		return "Browse"
 	}
@@ -71,12 +75,19 @@ func itemLabel(b *State, idx int) string {
 			t := items[idx]
 			return fmt.Sprintf("%2d. %s", t.TrackNumber, t.Name)
 		}
+	case ScreenCatalogResults:
+		if idx < len(b.CatalogResults) {
+			s := b.CatalogResults[idx]
+			return fmt.Sprintf("%s — %s", s.Name, s.Artist)
+		}
 	default:
 		switch idx {
 		case RootItemPlaylists:
-			return "Playlists"
+			return ui.IconPlaylistMusic + "  Playlists"
 		case RootItemLibrary:
-			return "Library"
+			return ui.IconLibrary + "  Library"
+		case RootItemCatalog:
+			return ui.IconMusic + "  Search Catalog"
 		}
 	}
 	return ""
@@ -93,6 +104,8 @@ func emptyMessage(screen Screen) string {
 		return "No albums in library."
 	case ScreenAlbumTracks:
 		return "No tracks found."
+	case ScreenCatalogResults:
+		return "No results found."
 	default:
 		return ""
 	}
@@ -162,7 +175,14 @@ func Draw(b *State, layout ui.Layout, spinnerFrame int, hasArtwork bool, drawLin
 	for i := range totalRows {
 		var content string
 
-		if i == subtitleRow {
+		if b.Screen == ScreenCatalogSearch {
+			if i == 0 {
+				searchLine := "\x1b[33m" + ui.IconSearch + "  " + b.CatalogQuery + "█\x1b[0m"
+				content = ui.TruncateVisible(searchLine, innerWidth)
+			} else if i == 1 {
+				content = "\x1b[2m" + ui.TruncateVisible("Type a query and press enter", innerWidth) + "\x1b[0m"
+			}
+		} else if i == subtitleRow {
 			content = "\x1b[2m" + ui.TruncateVisible(sub, innerWidth) + "\x1b[0m"
 		} else if b.IsLoading() && i == contentStart {
 			spinnerChars := [4]string{"⠋", "⠙", "⠹", "⠸"}
@@ -220,10 +240,14 @@ func Draw(b *State, layout ui.Layout, spinnerFrame int, hasArtwork bool, drawLin
 
 	// Hint lines.
 	var hints []string
-	if b.SearchActive {
+	if b.Screen == ScreenCatalogSearch {
+		hints = []string{"[type] search", "[enter] search", "[esc] back"}
+	} else if b.SearchActive {
 		hints = []string{"[type] search", "[enter] confirm", "[esc] clear"}
 	} else if b.Screen == ScreenRoot {
 		hints = []string{"[j|k] move", "[enter] select", "[x] close"}
+	} else if b.Screen == ScreenCatalogResults {
+		hints = []string{"[j|k] move", "[enter] play", "[/] search", "[h] back", "[x] close"}
 	} else {
 		hints = []string{"[j|k] move", "[/] search", "[a|d] sort", "[enter] select", "[h] back", "[x] close"}
 	}

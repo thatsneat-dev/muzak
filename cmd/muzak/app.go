@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/thatsneat-dev/muzak/internal/browse"
+	"github.com/thatsneat-dev/muzak/internal/catalog"
 	"github.com/thatsneat-dev/muzak/internal/music"
 	"github.com/thatsneat-dev/muzak/internal/ui"
 	"github.com/thatsneat-dev/muzak/internal/volume"
@@ -60,6 +61,7 @@ type app struct {
 	playlistsCh   chan []music.Playlist
 	albumsCh      chan []music.Album
 	albumTracksCh chan albumTracksResult
+	catalogCh     chan []catalog.Song
 
 	ticker        *time.Ticker
 	refresh       *time.Timer
@@ -87,6 +89,7 @@ func newApp(ctx context.Context, out *os.File, artworkPath string, layout ui.Lay
 		playlistsCh:   make(chan []music.Playlist, 1),
 		albumsCh:      make(chan []music.Album, 1),
 		albumTracksCh: make(chan albumTracksResult, 1),
+		catalogCh:     make(chan []catalog.Song, 1),
 
 		ticker:        time.NewTicker(time.Second),
 		spinnerTicker: time.NewTicker(100 * time.Millisecond),
@@ -332,6 +335,18 @@ func (a *app) fetchAlbumTracks(album *music.Album) {
 	go func() {
 		items, _ := music.ListAlbumTracks(a.ctx, name, artist)
 		a.albumTracksCh <- albumTracksResult{key, items}
+	}()
+}
+
+// fetchCatalog starts a catalog search in the background.
+func (a *app) fetchCatalog(query string) {
+	if a.browseState.CatalogLoading {
+		return
+	}
+	a.browseState.CatalogLoading = true
+	go func() {
+		songs, _ := catalog.Search(a.ctx, query)
+		a.catalogCh <- songs
 	}()
 }
 
