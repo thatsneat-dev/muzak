@@ -22,9 +22,19 @@
         ...
       }: let
         version = pkgs.lib.fileContents ./VERSION;
+        go = pkgs.go_1_26.overrideAttrs (old: rec {
+          version = "1.26.2";
+          src = pkgs.fetchurl {
+            url = "https://go.dev/dl/go${version}.src.tar.gz";
+            hash = "sha256-LpHrtpR6lulDb7KzkmqIAu/mOm03Xf/sT4Kqnb1v1Ds=";
+          };
+        });
+        buildGoModule = pkgs.buildGoModule.override {
+          inherit go;
+        };
       in {
         packages.default = self'.packages.muzak;
-        packages.muzak = pkgs.buildGoModule {
+        packages.muzak = buildGoModule {
           pname = "muzak";
           inherit version;
           src = pkgs.lib.fileset.toSource {
@@ -56,16 +66,19 @@
         };
 
         devShells = let
-          devPackages = with pkgs; [
-            go
-            just
-            gofumpt
-            gotools
-            golangci-lint
-            alejandra
-            statix
-            deadnix
-          ];
+          devPackages =
+            [
+              go
+            ]
+            ++ (with pkgs; [
+              just
+              gofumpt
+              gotools
+              golangci-lint
+              alejandra
+              statix
+              deadnix
+            ]);
         in {
           default = pkgs.mkShell {packages = devPackages;};
           bash = pkgs.mkShell {packages = devPackages;};
