@@ -179,6 +179,12 @@ func (a *app) run() {
 			if a.overlayMode == "browse" {
 				a.drawBrowse()
 			}
+		case on := <-a.shuffleCh:
+			a.shuffleOn = on
+			a.redrawControls()
+		case mode := <-a.repeatCh:
+			a.repeatMode = mode
+			a.redrawControls()
 		case <-a.winch:
 			a.layout = ui.DetectLayout(os.Stdin.Fd(), out.Fd())
 			a.currentTrack = ""

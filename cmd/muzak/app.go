@@ -63,6 +63,8 @@ type app struct {
 	albumsCh      chan []model.Album      // Fetched albums.
 	albumTracksCh chan albumTracksResult  // Fetched album tracks.
 	catalogCh     chan []model.Song       // Catalog search results.
+	shuffleCh     chan bool               // Receives shuffle toggle results.
+	repeatCh      chan string             // Receives repeat cycle results.
 
 	ticker        *time.Ticker // Fires every second to trigger polling.
 	refresh       *time.Timer  // Triggers a delayed poll after user actions.
@@ -91,6 +93,8 @@ func newApp(ctx context.Context, out *os.File, artworkPath string, layout ui.Lay
 		albumsCh:      make(chan []model.Album, 1),
 		albumTracksCh: make(chan albumTracksResult, 1),
 		catalogCh:     make(chan []model.Song, 1),
+		shuffleCh:     make(chan bool, 1),
+		repeatCh:      make(chan string, 1),
 
 		ticker:        time.NewTicker(time.Second),
 		spinnerTicker: time.NewTicker(100 * time.Millisecond),

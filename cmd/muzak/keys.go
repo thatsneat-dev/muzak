@@ -317,15 +317,19 @@ func (a *app) handleNowPlayingKey(key byte) bool {
 	case 's':
 		go func() {
 			if on, err := music.ToggleShuffle(a.ctx); err == nil {
-				a.shuffleOn = on
-				a.redrawControls()
+				select {
+				case a.shuffleCh <- on:
+				case <-a.ctx.Done():
+				}
 			}
 		}()
 	case 'r':
 		go func() {
 			if mode, err := music.CycleRepeat(a.ctx); err == nil {
-				a.repeatMode = mode
-				a.redrawControls()
+				select {
+				case a.repeatCh <- mode:
+				case <-a.ctx.Done():
+				}
 			}
 		}()
 	case 'q':
