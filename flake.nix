@@ -22,7 +22,7 @@
         ...
       }: let
         version = pkgs.lib.fileContents ./VERSION;
-        go = pkgs.go_1_26.overrideAttrs (old: rec {
+        go = pkgs.go_1_26.overrideAttrs (_: rec {
           version = "1.26.2";
           src = pkgs.fetchurl {
             url = "https://go.dev/dl/go${version}.src.tar.gz";
