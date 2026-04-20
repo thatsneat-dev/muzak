@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/thatsneat-dev/muzak/internal/music"
+	"github.com/thatsneat-dev/muzak/internal/model"
 )
 
 // AlbumCacheKey returns a cache key for an album.
@@ -14,8 +14,8 @@ func AlbumCacheKey(name, artist string) string {
 }
 
 // FilterPlaylistsByParent returns playlists whose ParentID matches the given id.
-func FilterPlaylistsByParent(all []music.Playlist, parentID string) []music.Playlist {
-	var result []music.Playlist
+func FilterPlaylistsByParent(all []model.Playlist, parentID string) []model.Playlist {
+	var result []model.Playlist
 	for _, p := range all {
 		if p.ParentID == parentID {
 			result = append(result, p)
@@ -45,10 +45,10 @@ func FuzzyMatch(target, query string) bool {
 }
 
 // VisiblePlaylists returns top-level playlists filtered and sorted per browse state.
-func VisiblePlaylists(b *State) []music.Playlist {
+func VisiblePlaylists(b *State) []model.Playlist {
 	items := FilterPlaylistsByParent(b.Playlists, "")
 	if b.SearchQuery != "" {
-		var filtered []music.Playlist
+		var filtered []model.Playlist
 		for _, p := range items {
 			if FuzzyMatch(p.Name, b.SearchQuery) {
 				filtered = append(filtered, p)
@@ -60,10 +60,10 @@ func VisiblePlaylists(b *State) []music.Playlist {
 }
 
 // VisibleFolderItems returns folder items filtered and sorted per browse state.
-func VisibleFolderItems(b *State) []music.Playlist {
+func VisibleFolderItems(b *State) []model.Playlist {
 	items := b.FolderItems
 	if b.SearchQuery != "" {
-		var filtered []music.Playlist
+		var filtered []model.Playlist
 		for _, p := range items {
 			if FuzzyMatch(p.Name, b.SearchQuery) {
 				filtered = append(filtered, p)
@@ -75,10 +75,10 @@ func VisibleFolderItems(b *State) []music.Playlist {
 }
 
 // VisibleAlbums returns albums filtered and sorted per browse state.
-func VisibleAlbums(b *State) []music.Album {
+func VisibleAlbums(b *State) []model.Album {
 	items := b.Albums
 	if b.SearchQuery != "" {
-		var filtered []music.Album
+		var filtered []model.Album
 		for _, a := range items {
 			if FuzzyMatch(a.Name, b.SearchQuery) || FuzzyMatch(a.AlbumArtist, b.SearchQuery) {
 				filtered = append(filtered, a)
@@ -90,10 +90,10 @@ func VisibleAlbums(b *State) []music.Album {
 }
 
 // VisibleAlbumTracks returns album tracks filtered and sorted per browse state.
-func VisibleAlbumTracks(b *State) []music.AlbumTrack {
+func VisibleAlbumTracks(b *State) []model.AlbumTrack {
 	items := b.AlbumTracks
 	if b.SearchQuery != "" {
-		var filtered []music.AlbumTrack
+		var filtered []model.AlbumTrack
 		for _, t := range items {
 			if FuzzyMatch(t.Name, b.SearchQuery) {
 				filtered = append(filtered, t)
@@ -105,11 +105,11 @@ func VisibleAlbumTracks(b *State) []music.AlbumTrack {
 }
 
 // SortPlaylists returns a sorted copy of playlists.
-func SortPlaylists(items []music.Playlist, order SortOrder) []music.Playlist {
+func SortPlaylists(items []model.Playlist, order SortOrder) []model.Playlist {
 	if order == SortNone || len(items) == 0 {
 		return items
 	}
-	out := make([]music.Playlist, len(items))
+	out := make([]model.Playlist, len(items))
 	copy(out, items)
 	sort.Slice(out, func(i, j int) bool {
 		if order == SortDesc {
@@ -121,11 +121,11 @@ func SortPlaylists(items []music.Playlist, order SortOrder) []music.Playlist {
 }
 
 // SortAlbums returns a sorted copy of albums.
-func SortAlbums(items []music.Album, order SortOrder) []music.Album {
+func SortAlbums(items []model.Album, order SortOrder) []model.Album {
 	if order == SortNone || len(items) == 0 {
 		return items
 	}
-	out := make([]music.Album, len(items))
+	out := make([]model.Album, len(items))
 	copy(out, items)
 	sort.Slice(out, func(i, j int) bool {
 		ni, nj := strings.ToLower(out[i].Name), strings.ToLower(out[j].Name)
@@ -145,11 +145,11 @@ func SortAlbums(items []music.Album, order SortOrder) []music.Album {
 }
 
 // SortAlbumTracks returns a sorted copy of album tracks.
-func SortAlbumTracks(items []music.AlbumTrack, order SortOrder) []music.AlbumTrack {
+func SortAlbumTracks(items []model.AlbumTrack, order SortOrder) []model.AlbumTrack {
 	if order == SortNone || len(items) == 0 {
 		return items
 	}
-	out := make([]music.AlbumTrack, len(items))
+	out := make([]model.AlbumTrack, len(items))
 	copy(out, items)
 	sort.Slice(out, func(i, j int) bool {
 		ni, nj := strings.ToLower(out[i].Name), strings.ToLower(out[j].Name)
@@ -178,34 +178,34 @@ func MoveCursor(b *State, delta int) {
 }
 
 // SelectedPlaylist returns the playlist at the cursor on the playlists screen.
-func SelectedPlaylist(b *State) (music.Playlist, bool) {
+func SelectedPlaylist(b *State) (model.Playlist, bool) {
 	items := VisiblePlaylists(b)
 	if b.PlaylistsView.Cursor < len(items) {
 		return items[b.PlaylistsView.Cursor], true
 	}
-	return music.Playlist{}, false
+	return model.Playlist{}, false
 }
 
 // SelectedFolderItem returns the playlist at the cursor on the folder screen.
-func SelectedFolderItem(b *State) (music.Playlist, bool) {
+func SelectedFolderItem(b *State) (model.Playlist, bool) {
 	items := VisibleFolderItems(b)
 	if b.FolderView.Cursor < len(items) {
 		return items[b.FolderView.Cursor], true
 	}
-	return music.Playlist{}, false
+	return model.Playlist{}, false
 }
 
 // SelectedAlbum returns the album at the cursor on the albums screen.
-func SelectedAlbum(b *State) (music.Album, bool) {
+func SelectedAlbum(b *State) (model.Album, bool) {
 	items := VisibleAlbums(b)
 	if b.AlbumsView.Cursor < len(items) {
 		return items[b.AlbumsView.Cursor], true
 	}
-	return music.Album{}, false
+	return model.Album{}, false
 }
 
 // EnterFolder sets up the browse state to display a folder's contents.
-func EnterFolder(b *State, folder music.Playlist) {
+func EnterFolder(b *State, folder model.Playlist) {
 	b.FolderStack = append(b.FolderStack, b.FolderID)
 	b.FolderID = folder.PersistentID
 	b.FolderName = folder.Name

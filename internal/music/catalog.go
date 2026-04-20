@@ -6,6 +6,8 @@ import (
 	"strconv"
 )
 
+// playCatalogScript is the embedded AppleScript that plays a catalog track by store ID.
+//
 //go:embed play_catalog.applescript
 var playCatalogScript string
 

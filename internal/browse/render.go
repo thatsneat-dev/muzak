@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/thatsneat-dev/muzak/internal/music"
+	"github.com/thatsneat-dev/muzak/internal/model"
 	"github.com/thatsneat-dev/muzak/internal/ui"
 )
 
@@ -43,7 +43,7 @@ func subtitle(b *State) string {
 }
 
 // playlistLabel formats a playlist item, showing a folder icon for folders.
-func playlistLabel(p music.Playlist) string {
+func playlistLabel(p model.Playlist) string {
 	if p.IsFolder() {
 		return ui.IconFolder + "  " + p.Name
 	}
@@ -176,10 +176,11 @@ func Draw(b *State, layout ui.Layout, spinnerFrame int, hasArtwork bool, drawLin
 		var content string
 
 		if b.Screen == ScreenCatalogSearch {
-			if i == 0 {
+			switch i {
+			case 0:
 				searchLine := "\x1b[33m" + ui.IconSearch + "  " + b.CatalogQuery + "█\x1b[0m"
 				content = ui.TruncateVisible(searchLine, innerWidth)
-			} else if i == 1 {
+			case 1:
 				content = "\x1b[2m" + ui.TruncateVisible("Type a query and press enter", innerWidth) + "\x1b[0m"
 			}
 		} else if i == subtitleRow {

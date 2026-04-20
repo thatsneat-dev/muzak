@@ -10,36 +10,26 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/thatsneat-dev/muzak/internal/model"
 )
 
+// nowPlayingScript is the embedded AppleScript that queries Music.app for current track info.
+//
 //go:embed now_playing.applescript
 var nowPlayingScript string
 
+// queueScript is the embedded AppleScript that fetches upcoming queue tracks.
+//
 //go:embed queue.applescript
 var queueScript string
 
-// TrackInfo holds metadata about the currently playing track.
-type TrackInfo struct {
-	Artist   string  `json:"artist"`
-	Album    string  `json:"album"`
-	Name     string  `json:"name"`
-	Duration float64 `json:"duration"`
-	Position float64 `json:"position"`
-	Playing  bool
-}
-
-// QueueTrack holds metadata about an upcoming track in the queue.
-type QueueTrack struct {
-	Name     string  `json:"name"`
-	Artist   string  `json:"artist"`
-	Album    string  `json:"album"`
-	Duration float64 `json:"duration"`
-}
-
+// queueResponse wraps the JSON array of upcoming tracks from the queue AppleScript.
 type queueResponse struct {
-	Tracks []QueueTrack `json:"tracks"`
+	Tracks []model.QueueTrack `json:"tracks"`
 }
 
+// rawResponse is the raw JSON structure returned by the now-playing AppleScript.
 type rawResponse struct {
 	State    string  `json:"state"`
 	Artist   string  `json:"artist"`
@@ -52,7 +42,7 @@ type rawResponse struct {
 // NowPlaying runs the embedded AppleScript to get current track info.
 // artworkPath is where the script will write artwork PNG data if available.
 // Returns nil if no track is currently playing.
-func NowPlaying(ctx context.Context, artworkPath string) (*TrackInfo, error) {
+func NowPlaying(ctx context.Context, artworkPath string) (*model.TrackInfo, error) {
 	cmd := exec.CommandContext(ctx, "osascript", "-", artworkPath)
 	cmd.Stdin = strings.NewReader(nowPlayingScript)
 
@@ -69,7 +59,7 @@ func NowPlaying(ctx context.Context, artworkPath string) (*TrackInfo, error) {
 
 // ParseResponse unmarshals the JSON output from the AppleScript
 // and returns a TrackInfo, or nil when playback is stopped.
-func ParseResponse(data []byte) (*TrackInfo, error) {
+func ParseResponse(data []byte) (*model.TrackInfo, error) {
 	var raw rawResponse
 	if err := json.Unmarshal(bytes.TrimSpace(data), &raw); err != nil {
 		return nil, fmt.Errorf("parsing track info: %w", err)
@@ -79,7 +69,7 @@ func ParseResponse(data []byte) (*TrackInfo, error) {
 		return nil, nil
 	}
 
-	return &TrackInfo{
+	return &model.TrackInfo{
 		Artist:   raw.Artist,
 		Album:    raw.Album,
 		Name:     raw.Name,
@@ -125,7 +115,7 @@ func RestartTrack(ctx context.Context) error {
 }
 
 // Queue returns the upcoming tracks in the current playlist (up to 10).
-func Queue(ctx context.Context) ([]QueueTrack, error) {
+func Queue(ctx context.Context) ([]model.QueueTrack, error) {
 	cmd := exec.CommandContext(ctx, "osascript", "-")
 	cmd.Stdin = strings.NewReader(queueScript)
 

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/thatsneat-dev/muzak/internal/music"
+	"github.com/thatsneat-dev/muzak/internal/model"
 )
 
 // LineDrawer writes a single line at the given row/col.
@@ -82,7 +82,7 @@ type NowPlayingOptions struct {
 }
 
 // BuildLines constructs the five display lines for the current track.
-func BuildLines(info *music.TrackInfo, layout Layout, withArtwork bool, opts NowPlayingOptions) []string {
+func BuildLines(info *model.TrackInfo, layout Layout, withArtwork bool, opts NowPlayingOptions) []string {
 	bw := layout.BarWidth(withArtwork)
 	return []string{
 		"\x1b[1m" + info.Name + "\x1b[0m",
@@ -195,7 +195,7 @@ func SendKittyImage(w *os.File, layout Layout, pngData []byte) {
 
 // QueueViewModel holds the state needed to render the queue modal.
 type QueueViewModel struct {
-	Tracks       []music.QueueTrack
+	Tracks       []model.QueueTrack
 	Scroll       int
 	Loading      bool
 	SpinnerFrame int

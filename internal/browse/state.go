@@ -1,8 +1,10 @@
+// Package browse implements the browse modal state machine for navigating
+// playlists, albums, album tracks, and catalog search results within the
+// muzak TUI.
 package browse
 
 import (
-	"github.com/thatsneat-dev/muzak/internal/catalog"
-	"github.com/thatsneat-dev/muzak/internal/music"
+	"github.com/thatsneat-dev/muzak/internal/model"
 )
 
 // Screen identifies the current screen within the browse modal.
@@ -33,51 +35,52 @@ type ListState struct {
 	Scroll int
 }
 
+// Root menu item indices for the browse modal's top-level screen.
 const (
-	RootItemPlaylists = 0
-	RootItemLibrary   = 1
-	RootItemCatalog   = 2
-	RootItemCount     = 3
+	RootItemPlaylists = 0 // Playlists entry.
+	RootItemLibrary   = 1 // Library entry.
+	RootItemCatalog   = 2 // Search Catalog entry.
+	RootItemCount     = 3 // Total number of root menu items.
 )
 
 // State holds all state for the browse modal.
 type State struct {
-	Screen Screen
+	Screen Screen // Currently active browse screen.
 
-	RootView      ListState
-	PlaylistsView ListState
-	AlbumsView    ListState
-	TracksView    ListState
-	FolderView    ListState
+	RootView      ListState // Cursor state for the root menu.
+	PlaylistsView ListState // Cursor state for the playlists screen.
+	AlbumsView    ListState // Cursor state for the albums screen.
+	TracksView    ListState // Cursor state for the album tracks screen.
+	FolderView    ListState // Cursor state for the folder screen.
 
-	Playlists []music.Playlist
-	Albums    []music.Album
+	Playlists []model.Playlist // Full list of user playlists.
+	Albums    []model.Album    // Full list of library albums.
 
-	SelectedAlbum   *music.Album
-	AlbumTracks     []music.AlbumTrack
-	AlbumTrackCache map[string][]music.AlbumTrack
+	SelectedAlbum   *model.Album                  // Album currently being viewed.
+	AlbumTracks     []model.AlbumTrack            // Tracks for the selected album.
+	AlbumTrackCache map[string][]model.AlbumTrack // Cached album tracks by cache key.
 
-	FolderStack []string
-	FolderID    string
-	FolderName  string
-	FolderItems []music.Playlist
+	FolderStack []string         // Parent folder IDs for back navigation.
+	FolderID    string           // Persistent ID of the current folder.
+	FolderName  string           // Display name of the current folder.
+	FolderItems []model.Playlist // Contents of the current folder.
 
-	PlaylistsLoading bool
-	PlaylistsLoaded  bool
-	AlbumsLoading    bool
-	AlbumsLoaded     bool
-	TracksLoading    bool
+	PlaylistsLoading bool // Playlists are being fetched.
+	PlaylistsLoaded  bool // Playlists have been fetched at least once.
+	AlbumsLoading    bool // Albums are being fetched.
+	AlbumsLoaded     bool // Albums have been fetched at least once.
+	TracksLoading    bool // Album tracks are being fetched.
 
-	CatalogView    ListState
-	CatalogQuery   string
-	CatalogResults []catalog.Song
-	CatalogLoading bool
+	CatalogView    ListState    // Cursor state for catalog results.
+	CatalogQuery   string       // Current catalog search input.
+	CatalogResults []model.Song // Search results from the iTunes catalog.
+	CatalogLoading bool         // Catalog search is in progress.
 
-	AutoOpened bool
+	AutoOpened bool // Browse modal opened automatically (no track playing).
 
-	Sort         SortOrder
-	SearchQuery  string
-	SearchActive bool
+	Sort         SortOrder // Current sort order for list screens.
+	SearchQuery  string    // Current fuzzy search input.
+	SearchActive bool      // Search input is focused.
 }
 
 // CurrentList returns the active list state for the current screen.

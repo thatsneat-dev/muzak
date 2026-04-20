@@ -1,3 +1,6 @@
+// Package ui provides terminal rendering primitives, layout computation,
+// ANSI text helpers, Nerd Font icon constants, Kitty graphics protocol support,
+// and drawing functions for the muzak TUI.
 package ui
 
 import (

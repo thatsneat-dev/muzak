@@ -17,13 +17,11 @@ import (
 	"golang.org/x/term"
 )
 
+// out is the terminal output file used for all display writes.
 var out = os.Stdout
 
 // version is set at build time via -ldflags "-X main.version=...".
-var (
-	version = "dev"
-	_       = version
-)
+var version = "dev"
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

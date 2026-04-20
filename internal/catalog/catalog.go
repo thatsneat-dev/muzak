@@ -14,27 +14,19 @@ import (
 	"net/url"
 	"regexp"
 	"time"
+
+	"github.com/thatsneat-dev/muzak/internal/model"
 )
 
-// Song holds metadata about a song from the Apple Music catalog.
-type Song struct {
-	TrackID      int    `json:"trackId"`
-	Name         string `json:"trackName"`
-	Artist       string `json:"artistName"`
-	Album        string `json:"collectionName"`
-	DurationMs   int    `json:"trackTimeMillis"`
-	TrackViewURL string `json:"trackViewUrl"`
-	ArtworkURL   string `json:"artworkUrl100"`
-}
-
+// searchResponse is the JSON wrapper returned by the iTunes Search API.
 type searchResponse struct {
-	ResultCount int    `json:"resultCount"`
-	Results     []Song `json:"results"`
+	ResultCount int          `json:"resultCount"`
+	Results     []model.Song `json:"results"`
 }
 
 // Search queries the iTunes Search API for songs matching the given query
 // and returns up to 25 results from the US storefront.
-func Search(ctx context.Context, query string) ([]Song, error) {
+func Search(ctx context.Context, query string) ([]model.Song, error) {
 	params := url.Values{
 		"media":   {"music"},
 		"entity":  {"song"},
@@ -56,7 +48,7 @@ func Search(ctx context.Context, query string) ([]Song, error) {
 	if err != nil {
 		return nil, fmt.Errorf("searching catalog: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("searching catalog: unexpected status %d", resp.StatusCode)
@@ -70,6 +62,7 @@ func Search(ctx context.Context, query string) ([]Song, error) {
 	return result.Results, nil
 }
 
+// dimPattern matches the dimension component (e.g., /100x100bb.) in iTunes artwork URLs.
 var dimPattern = regexp.MustCompile(`/\d+x\d+bb\.`)
 
 // ArtworkURL500 returns the artwork URL scaled to 500x500.
@@ -91,7 +84,7 @@ func DownloadArtwork(ctx context.Context, artworkURL string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("downloading artwork: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("downloading artwork: unexpected status %d", resp.StatusCode)
