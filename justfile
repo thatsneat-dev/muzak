@@ -21,6 +21,7 @@ fmt:
 # Check formatting without modifying files.
 fmt-check:
     @gofumpt -d . | diff /dev/null - >/dev/null 2>&1 || (echo "gofumpt: files need formatting" && gofumpt -d . && exit 1)
+    @goimports -d . | diff /dev/null - >/dev/null 2>&1 || (echo "goimports: files need formatting" && goimports -d . && exit 1)
     @alejandra -c . >/dev/null 2>&1 || (echo "alejandra: files need formatting" && exit 1)
 
 # Lint Go and Nix code.
@@ -32,6 +33,10 @@ lint:
 # Run tests with race detection.
 test:
     go test -race ./...
+
+# Run tests with JUnit output for CI.
+test-ci:
+    gotestsum --format standard-verbose --junitfile test-results.xml -- -race ./...
 
 # Run security vulnerability check.
 vuln:
@@ -49,19 +54,22 @@ run: build
 clean:
     rm -rf {{build_dir}}
 
+# Verify VERSION has been bumped from main.
+version-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    git fetch origin main --depth=1 2>/dev/null
+    main_version=$(git show origin/main:VERSION)
+    pr_version=$(cat VERSION)
+    if [ "$main_version" = "$pr_version" ]; then
+        echo "VERSION has not been changed. Please run 'nix run .#patch|minor|major' before merging."
+        exit 1
+    fi
+    echo "Version bumped: $main_version → $pr_version ✓"
+
 # Run all checks (fmt, lint, test, vuln).
 check: fmt-check lint test vuln
 
 # Bump version (usage: just bump patch|minor|major).
 bump type:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    IFS='.' read -r major minor patch < VERSION
-    case "{{type}}" in
-        patch) patch=$((patch + 1)) ;;
-        minor) minor=$((minor + 1)); patch=0 ;;
-        major) major=$((major + 1)); minor=0; patch=0 ;;
-        *) echo "usage: just bump patch|minor|major" && exit 1 ;;
-    esac
-    echo "$major.$minor.$patch" > VERSION
-    echo "v$major.$minor.$patch"
+    nix run .#{{type}}
