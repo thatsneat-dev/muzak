@@ -75,6 +75,8 @@
               gofumpt
               gotools
               golangci-lint
+              govulncheck
+              gotestsum
               alejandra
               statix
               deadnix
@@ -90,10 +92,31 @@
           };
         };
 
-        apps.muzak = {
-          type = "app";
-          program = "${self'.packages.muzak}/bin/muzak";
-          meta.description = "Apple Music now-playing terminal widget";
+        apps = let
+          bumpApp = kind: {
+            type = "app";
+            program = toString (pkgs.writeShellScript "bump-${kind}" ''
+              set -euo pipefail
+              IFS='.' read -r major minor patch < VERSION
+              case "${kind}" in
+                patch) patch=$((patch + 1)) ;;
+                minor) minor=$((minor + 1)); patch=0 ;;
+                major) major=$((major + 1)); minor=0; patch=0 ;;
+              esac
+              echo "$major.$minor.$patch" > VERSION
+              echo "v$major.$minor.$patch"
+            '');
+          };
+        in {
+          default = self'.apps.muzak;
+          muzak = {
+            type = "app";
+            program = "${self'.packages.muzak}/bin/muzak";
+            meta.description = "Apple Music now-playing terminal widget";
+          };
+          patch = bumpApp "patch";
+          minor = bumpApp "minor";
+          major = bumpApp "major";
         };
       };
     };
