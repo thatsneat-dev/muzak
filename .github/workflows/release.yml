@@ -49,9 +49,17 @@ jobs:
           git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
           git push origin "${{ steps.version.outputs.tag }}"
 
+      - name: Verify release notes exist
+        run: |
+          notes="docs/release-notes-${{ steps.version.outputs.tag }}.md"
+          if [ ! -f "$notes" ]; then
+            echo "::error::Missing release notes at $notes"
+            exit 1
+          fi
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           name: ${{ steps.version.outputs.tag }}
-          generate_release_notes: true
+          body_path: docs/release-notes-${{ steps.version.outputs.tag }}.md

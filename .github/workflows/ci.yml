@@ -7,6 +7,7 @@ on:
     paths-ignore:
       - "**/*.md"
       - "docs/**"
+      - "!docs/release-notes-*.md"
       - "LICENSE"
 
 concurrency:
@@ -37,6 +38,9 @@ jobs:
 
       - name: Version bump check
         run: nix develop -c just version-check
+
+      - name: Release notes check
+        run: nix develop -c just release-notes-check
 
       - name: Flake check
         run: nix flake check --no-build

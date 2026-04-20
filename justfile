@@ -67,6 +67,18 @@ version-check:
     fi
     echo "Version bumped: $main_version → $pr_version ✓"
 
+# Verify release notes exist for the current version.
+release-notes-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version=$(cat VERSION)
+    notes="docs/release-notes-v${version}.md"
+    if [ ! -f "$notes" ]; then
+        echo "Missing release notes at $notes"
+        exit 1
+    fi
+    echo "Release notes found: $notes ✓"
+
 # Run all checks (fmt, lint, test, vuln).
 check: fmt-check lint test vuln
 
