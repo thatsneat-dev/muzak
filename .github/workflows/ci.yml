@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "LICENSE"
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  verify:
+    if: ${{ !github.event.pull_request.draft }}
+    name: Verify
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Enable Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Version bump check
+        run: nix develop -c just version-check
+
+      - name: Flake check
+        run: nix flake check --no-build
+
+      - name: Formatting
+        run: nix develop -c just fmt-check
+
+      - name: Lint
+        run: nix develop -c just lint
+
+      - name: Vulnerability check
+        run: nix develop -c just vuln
+
+      - name: Build (Nix)
+        run: nix build --print-build-logs
+
+      - name: Tests
+        run: nix develop -c just test-ci
+
+      - name: Publish test results
+        if: always()
+        uses: mikepenz/action-junit-report@v4
+        with:
+          report_paths: test-results.xml
+          detailed_summary: true
+          fail_on_failure: true
+          require_tests: true
