@@ -47,30 +47,46 @@ jobs:
           purge-primary-key: never
 
       - name: Version bump check
+        id: version_check
         run: nix develop -c just version-check
 
       - name: Release notes check
+        id: release_notes_check
+        if: always()
         run: nix develop -c just release-notes-check
 
       - name: Flake check
+        id: flake_check
+        if: always()
         run: nix flake check --no-build
 
       - name: Formatting
+        id: fmt_check
+        if: always()
         run: nix develop -c just fmt-check
 
       - name: Lint
+        id: lint
+        if: always()
         run: nix develop -c just lint
 
       - name: Vulnerability check
+        id: vuln
+        if: always()
         run: nix develop -c just vuln
 
       - name: Build (Nix)
+        id: build
+        if: always()
         run: nix build --print-build-logs
 
       - name: Tests
+        id: tests
+        if: always()
         run: nix develop -c just test-ci
 
       - name: Publish test results
+        id: junit
         if: always()
         uses: mikepenz/action-junit-report@v4
         with:
@@ -78,3 +94,48 @@ jobs:
           detailed_summary: true
           fail_on_failure: true
           require_tests: true
+
+      - name: CI summary
+        if: always()
+        env:
+          OUTCOME_VERSION: ${{ steps.version_check.outcome }}
+          OUTCOME_RELEASE_NOTES: ${{ steps.release_notes_check.outcome }}
+          OUTCOME_FLAKE: ${{ steps.flake_check.outcome }}
+          OUTCOME_FMT: ${{ steps.fmt_check.outcome }}
+          OUTCOME_LINT: ${{ steps.lint.outcome }}
+          OUTCOME_VULN: ${{ steps.vuln.outcome }}
+          OUTCOME_BUILD: ${{ steps.build.outcome }}
+          OUTCOME_TESTS: ${{ steps.tests.outcome }}
+          OUTCOME_JUNIT: ${{ steps.junit.outcome }}
+        run: |
+          icon() {
+            case "$1" in
+              success) echo "✅ passed" ;;
+              failure) echo "❌ failed" ;;
+              cancelled) echo "🚫 cancelled" ;;
+              skipped) echo "⏭️ skipped" ;;
+              *) echo "➖ $1" ;;
+            esac
+          }
+
+          {
+            echo "## CI Results"
+            echo ""
+            echo "**Runner:** \`${{ runner.os }}\` (\`${{ runner.arch }}\`)  "
+            echo "**Commit:** \`${{ github.sha }}\`  "
+            echo "**Trigger:** \`${{ github.event_name }}\` on \`${{ github.ref_name }}\`"
+            echo ""
+            echo "| Stage | Result | Details |"
+            echo "| --- | --- | --- |"
+            echo "| Version bump check | $(icon "$OUTCOME_VERSION") | \`just version-check\` |"
+            echo "| Release notes check | $(icon "$OUTCOME_RELEASE_NOTES") | \`just release-notes-check\` |"
+            echo "| Flake check | $(icon "$OUTCOME_FLAKE") | \`nix flake check --no-build\` |"
+            echo "| Formatting | $(icon "$OUTCOME_FMT") | \`just fmt-check\` |"
+            echo "| Lint | $(icon "$OUTCOME_LINT") | \`just lint\` |"
+            echo "| Vulnerability check | $(icon "$OUTCOME_VULN") | \`just vuln\` |"
+            echo "| Build (Nix) | $(icon "$OUTCOME_BUILD") | \`nix build\` |"
+            echo "| Tests | $(icon "$OUTCOME_TESTS") | \`just test-ci\` |"
+            echo "| JUnit report | $(icon "$OUTCOME_JUNIT") | \`test-results.xml\` |"
+            echo ""
+            echo "_Overall job status: **${{ job.status }}**_"
+          } >> "$GITHUB_STEP_SUMMARY"
