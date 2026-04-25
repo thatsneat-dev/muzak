@@ -18,6 +18,7 @@ permissions:
   contents: read
   checks: write
   pull-requests: write
+  actions: write
 
 jobs:
   verify:
@@ -34,7 +35,16 @@ jobs:
         uses: DeterminateSystems/nix-installer-action@main
 
       - name: Enable Nix cache
-        uses: DeterminateSystems/magic-nix-cache-action@main
+        uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size: 5G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-created: 0
+          purge-last-accessed: P1DT12H
+          purge-primary-key: never
 
       - name: Version bump check
         run: nix develop -c just version-check
