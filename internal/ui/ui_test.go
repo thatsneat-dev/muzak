@@ -1,12 +1,14 @@
 package ui_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/thatsneat-dev/muzak/internal/music"
+	"github.com/thatsneat-dev/muzak/internal/model"
 	"github.com/thatsneat-dev/muzak/internal/ui"
 )
 
@@ -107,7 +109,7 @@ func TestControlsLine(t *testing.T) {
 func TestBuildLines(t *testing.T) {
 	t.Parallel()
 
-	info := &music.TrackInfo{
+	info := &model.TrackInfo{
 		Name:     "Test Song",
 		Artist:   "Test Artist",
 		Album:    "Test Album",
@@ -237,11 +239,149 @@ func TestDrawHintsTwoLines(t *testing.T) {
 		lines = append(lines, s)
 	}
 	items := []string{"[j|k] move", "[/] search", "[a|d] sort", "[enter] select", "[h] back", "[x] close"}
-	ui.DrawHints(items, 30, 0, 0, draw)
+	ui.DrawHints(items, 40, 0, 0, draw)
 
 	assert.Len(t, lines, 2)
 	// First line should NOT contain all items.
 	assert.NotContains(t, lines[0], "[x] close")
 	// Second line should contain the overflow items.
+	assert.Contains(t, lines[1], "[h] back")
 	assert.Contains(t, lines[1], "[x] close")
+	// Lines should not exceed modalWidth visible chars.
+	for _, l := range lines {
+		assert.LessOrEqual(t, ui.VisibleLen(l), 40)
+	}
+}
+
+func TestComputeLayout(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		w, h        int
+		err         error
+		wantCols    int
+		wantArtCols int
+		wantArtRows int
+	}{
+		{"default size", 80, 24, nil, 80, 20, 10},
+		{"small terminal", 40, 8, nil, 40, 12, 6},
+		{"very small terminal", 20, 3, nil, 20, 2, 1},
+		{"error falls back", 0, 0, errors.New("no tty"), 0, 20, 10},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			l := ui.ComputeLayout(tt.w, tt.h, tt.err)
+			assert.Equal(t, tt.wantCols, l.TerminalCols)
+			assert.Equal(t, tt.wantArtCols, l.ArtworkCols)
+			assert.Equal(t, tt.wantArtRows, l.ArtworkRows)
+		})
+	}
+}
+
+func TestLayoutDisplayRows(t *testing.T) {
+	t.Parallel()
+	l := ui.ComputeLayout(80, 24, nil)
+	assert.Equal(t, ui.PadTop+l.ArtworkRows, l.DisplayRows())
+}
+
+func TestLayoutArtworkLeft(t *testing.T) {
+	t.Parallel()
+	l := ui.ComputeLayout(80, 24, nil)
+	assert.Equal(t, ui.PadLeft+ui.VolBarWidth+ui.VolBarGap, l.ArtworkLeft())
+}
+
+func TestLayoutTextCol(t *testing.T) {
+	t.Parallel()
+	l := ui.ComputeLayout(80, 24, nil)
+
+	t.Run("with artwork", func(t *testing.T) {
+		t.Parallel()
+		assert.Equal(t, l.ArtworkLeft()+l.ArtworkCols+2, l.TextCol(true))
+	})
+
+	t.Run("without artwork", func(t *testing.T) {
+		t.Parallel()
+		assert.Equal(t, ui.PadLeft, l.TextCol(false))
+	})
+}
+
+func TestLayoutTextWidth(t *testing.T) {
+	t.Parallel()
+	l := ui.ComputeLayout(80, 24, nil)
+
+	t.Run("with artwork", func(t *testing.T) {
+		t.Parallel()
+		w := l.TextWidth(true)
+		assert.Greater(t, w, 0)
+		assert.Equal(t, l.TerminalCols-l.TextCol(true), w)
+	})
+
+	t.Run("without artwork", func(t *testing.T) {
+		t.Parallel()
+		w := l.TextWidth(false)
+		assert.Equal(t, l.TerminalCols-ui.PadLeft, w)
+	})
+
+	t.Run("too narrow", func(t *testing.T) {
+		t.Parallel()
+		narrow := ui.ComputeLayout(5, 24, nil)
+		assert.Equal(t, 0, narrow.TextWidth(true))
+	})
+}
+
+func TestLayoutBarWidth(t *testing.T) {
+	t.Parallel()
+
+	t.Run("default fits", func(t *testing.T) {
+		t.Parallel()
+		l := ui.ComputeLayout(120, 24, nil)
+		assert.Equal(t, ui.DefaultBarWidth, l.BarWidth(false))
+	})
+
+	t.Run("constrained by width", func(t *testing.T) {
+		t.Parallel()
+		l := ui.ComputeLayout(20, 24, nil)
+		bw := l.BarWidth(false)
+		assert.Less(t, bw, ui.DefaultBarWidth)
+		assert.Greater(t, bw, 0)
+	})
+}
+
+func TestSafeReset(t *testing.T) {
+	t.Parallel()
+
+	timer := time.NewTimer(time.Hour)
+	// SafeReset should not block even though the timer hasn't fired.
+	ui.SafeReset(timer, 10*time.Millisecond)
+	select {
+	case <-timer.C:
+		// Timer fired as expected.
+	case <-time.After(time.Second):
+		t.Fatal("SafeReset: timer did not fire within 1 second")
+	}
+}
+
+func TestControlsLineShuffleRepeat(t *testing.T) {
+	t.Parallel()
+
+	t.Run("shuffle on", func(t *testing.T) {
+		t.Parallel()
+		result := ui.ControlsLine(true, "", true, "off")
+		assert.Contains(t, result, ui.Yellow+ui.IconShuffle)
+	})
+
+	t.Run("repeat one", func(t *testing.T) {
+		t.Parallel()
+		result := ui.ControlsLine(true, "", false, "one")
+		assert.Contains(t, result, ui.Yellow+ui.IconRepeatOne+ui.Reset)
+	})
+
+	t.Run("repeat all", func(t *testing.T) {
+		t.Parallel()
+		result := ui.ControlsLine(true, "", false, "all")
+		assert.Contains(t, result, ui.Yellow+ui.IconRepeat+ui.Reset)
+	})
 }

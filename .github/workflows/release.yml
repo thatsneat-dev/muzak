@@ -1,0 +1,129 @@
+name: Release
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  release:
+    if: ${{ github.event.pull_request.merged == true }}
+    name: Tag & Release
+    runs-on: macos-14
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: |
+          version=$(cat VERSION)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Check tag doesn't exist
+        id: tag_check
+        run: |
+          if git ls-remote --tags origin "refs/tags/${{ steps.version.outputs.tag }}" | grep -q .; then
+            echo "::error::Tag ${{ steps.version.outputs.tag }} already exists. Did you forget to bump the version?"
+            exit 1
+          fi
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Enable Nix cache
+        uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size: 5G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-created: 0
+          purge-last-accessed: P1DT12H
+          purge-primary-key: never
+
+      - name: Verify release notes exist
+        id: notes_check
+        run: |
+          notes="docs/release-notes-${{ steps.version.outputs.tag }}.md"
+          if [ ! -f "$notes" ]; then
+            echo "::error::Missing release notes at $notes"
+            exit 1
+          fi
+          echo "notes_path=${notes}" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        id: build
+        run: nix build --print-build-logs
+
+      - name: Create tag
+        id: create_tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      - name: Create release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          body_path: docs/release-notes-${{ steps.version.outputs.tag }}.md
+
+      - name: Release summary
+        if: always()
+        env:
+          OUTCOME_VERSION: ${{ steps.version.outcome }}
+          OUTCOME_TAG_CHECK: ${{ steps.tag_check.outcome }}
+          OUTCOME_NOTES: ${{ steps.notes_check.outcome }}
+          OUTCOME_BUILD: ${{ steps.build.outcome }}
+          OUTCOME_CREATE_TAG: ${{ steps.create_tag.outcome }}
+          OUTCOME_CREATE_RELEASE: ${{ steps.create_release.outcome }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_URL: ${{ steps.create_release.outputs.url }}
+        run: |
+          icon() {
+            case "$1" in
+              success) echo "✅ passed" ;;
+              failure) echo "❌ failed" ;;
+              cancelled) echo "🚫 cancelled" ;;
+              skipped) echo "⏭️ skipped" ;;
+              *) echo "➖ ${1:-not run}" ;;
+            esac
+          }
+
+          {
+            echo "## Release Results"
+            echo ""
+            echo "**Version:** \`${RELEASE_VERSION:-unknown}\`  "
+            echo "**Tag:** \`${RELEASE_TAG:-unknown}\`  "
+            echo "**Runner:** \`${{ runner.os }}\` (\`${{ runner.arch }}\`)  "
+            echo "**Commit:** \`${{ github.sha }}\`  "
+            echo "**Merged PR:** #${{ github.event.pull_request.number }} — ${{ github.event.pull_request.title }}"
+            echo ""
+            echo "| Stage | Result | Details |"
+            echo "| --- | --- | --- |"
+            echo "| Read version | $(icon "$OUTCOME_VERSION") | from \`VERSION\` file |"
+            echo "| Tag uniqueness | $(icon "$OUTCOME_TAG_CHECK") | ensures \`${RELEASE_TAG}\` doesn't exist |"
+            echo "| Release notes check | $(icon "$OUTCOME_NOTES") | \`docs/release-notes-${RELEASE_TAG}.md\` |"
+            echo "| Build | $(icon "$OUTCOME_BUILD") | \`nix build\` |"
+            echo "| Create tag | $(icon "$OUTCOME_CREATE_TAG") | pushes \`${RELEASE_TAG}\` to origin |"
+            echo "| Create release | $(icon "$OUTCOME_CREATE_RELEASE") | \`softprops/action-gh-release\` |"
+            echo ""
+            if [ -n "${RELEASE_URL}" ]; then
+              echo "🎉 **Release published:** ${RELEASE_URL}"
+            fi
+            echo ""
+            echo "_Overall job status: **${{ job.status }}**_"
+          } >> "$GITHUB_STEP_SUMMARY"

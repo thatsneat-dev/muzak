@@ -27,6 +27,7 @@ const (
 	IconPlaylistMusic = "\U000F0CB8" // 󰲸 nf-md-playlist_music
 	IconLibrary       = "\uEB9C"     //  nf-cod-library
 	IconSearch        = "\uF002"     //  nf-fa-search
+	IconMusic         = "\uF001"     //  nf-fa-music
 )
 
 // ANSI color codes.

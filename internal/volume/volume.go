@@ -96,6 +96,7 @@ import "fmt"
 // volumeStep is the fraction of full volume changed per key press (5%).
 const volumeStep = 0.05
 
+// osStatusError converts a CoreAudio OSStatus code to a Go error, returning nil for noErr.
 func osStatusError(op string, status C.OSStatus) error {
 	if status == C.OSStatus(C.noErr) {
 		return nil

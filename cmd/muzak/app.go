@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/thatsneat-dev/muzak/internal/browse"
+	"github.com/thatsneat-dev/muzak/internal/catalog"
+	"github.com/thatsneat-dev/muzak/internal/model"
 	"github.com/thatsneat-dev/muzak/internal/music"
 	"github.com/thatsneat-dev/muzak/internal/ui"
 	"github.com/thatsneat-dev/muzak/internal/volume"
@@ -17,56 +19,59 @@ const queueVisible = 5 // max queue tracks visible at once
 // albumTracksResult bundles the cache key with fetched tracks.
 type albumTracksResult struct {
 	key    string
-	tracks []music.AlbumTrack
+	tracks []model.AlbumTrack
 }
 
 // pollResult holds the outcome of a NowPlaying poll.
 type pollResult struct {
-	info *music.TrackInfo
+	info *model.TrackInfo
 	err  error
 }
 
 // app holds all runtime state for the muzak TUI.
 type app struct {
-	ctx context.Context
-	out *os.File
+	ctx context.Context // Application lifecycle context.
+	out *os.File        // Terminal output file (stdout).
 
-	layout      ui.Layout
-	artworkPath string
+	layout      ui.Layout // Computed terminal dimensions.
+	artworkPath string    // Temp file path for artwork PNG data.
 
-	overlayMode    string
-	currentTrack   string
-	hasArtwork     bool
-	spaceAllocated bool
-	latestInfo     *music.TrackInfo
-	pollRunning    bool
-	flashIcon      string
-	shuffleOn      bool
-	repeatMode     string
-	forceRedraw    bool
+	overlayMode    string           // Active overlay ("queue", "browse", or "").
+	currentTrack   string           // Cache key of the currently displayed track.
+	hasArtwork     bool             // Whether artwork is currently displayed.
+	spaceAllocated bool             // Whether display space has been reserved.
+	latestInfo     *model.TrackInfo // Most recent track info from polling.
+	pollRunning    bool             // A NowPlaying poll is in flight.
+	flashIcon      string           // Currently flashing control icon name.
+	shuffleOn      bool             // Shuffle mode is active.
+	repeatMode     string           // Current repeat mode ("off", "one", "all").
+	forceRedraw    bool             // Forces a full redraw on next poll result.
 
-	queueTracks  []music.QueueTrack
-	queueScroll  int
-	queueLoading bool
-	spinnerFrame int
+	queueTracks  []model.QueueTrack // Fetched queue tracks.
+	queueScroll  int                // Scroll offset in the queue modal.
+	queueLoading bool               // Queue data is being fetched.
+	spinnerFrame int                // Current animation frame for loading spinners.
 
-	browseState       browse.State
-	autoBrowsePending bool
+	browseState       browse.State // Browse modal state machine.
+	autoBrowsePending bool         // Auto-opens browse when no track is playing.
 
-	keys          <-chan byte
-	winch         <-chan os.Signal
-	pollCh        chan pollResult
-	queueCh       chan []music.QueueTrack
-	playlistsCh   chan []music.Playlist
-	albumsCh      chan []music.Album
-	albumTracksCh chan albumTracksResult
+	keys          <-chan byte             // Raw keypresses from stdin.
+	winch         <-chan os.Signal        // SIGWINCH signals for terminal resize.
+	pollCh        chan pollResult         // NowPlaying poll results.
+	queueCh       chan []model.QueueTrack // Fetched queue tracks.
+	playlistsCh   chan []model.Playlist   // Fetched playlists.
+	albumsCh      chan []model.Album      // Fetched albums.
+	albumTracksCh chan albumTracksResult  // Fetched album tracks.
+	catalogCh     chan []model.Song       // Catalog search results.
+	shuffleCh     chan bool               // Receives shuffle toggle results.
+	repeatCh      chan string             // Receives repeat cycle results.
 
-	ticker        *time.Ticker
-	refresh       *time.Timer
-	flashTimer    *time.Timer
-	spinnerTicker *time.Ticker
+	ticker        *time.Ticker // Fires every second to trigger polling.
+	refresh       *time.Timer  // Triggers a delayed poll after user actions.
+	flashTimer    *time.Timer  // Clears the flash icon after a delay.
+	spinnerTicker *time.Ticker // Drives loading spinner animation.
 
-	drawModalLine ui.LineDrawer
+	drawModalLine ui.LineDrawer // Line drawer for modal overlays.
 }
 
 // newApp creates and initializes a new app instance.
@@ -83,10 +88,13 @@ func newApp(ctx context.Context, out *os.File, artworkPath string, layout ui.Lay
 		keys:          keys,
 		winch:         winch,
 		pollCh:        make(chan pollResult, 1),
-		queueCh:       make(chan []music.QueueTrack, 1),
-		playlistsCh:   make(chan []music.Playlist, 1),
-		albumsCh:      make(chan []music.Album, 1),
+		queueCh:       make(chan []model.QueueTrack, 1),
+		playlistsCh:   make(chan []model.Playlist, 1),
+		albumsCh:      make(chan []model.Album, 1),
 		albumTracksCh: make(chan albumTracksResult, 1),
+		catalogCh:     make(chan []model.Song, 1),
+		shuffleCh:     make(chan bool, 1),
+		repeatCh:      make(chan string, 1),
 
 		ticker:        time.NewTicker(time.Second),
 		spinnerTicker: time.NewTicker(100 * time.Millisecond),
@@ -192,13 +200,14 @@ func (a *app) redrawControls() {
 	_, _ = fmt.Fprintf(a.out, "\x1b[K%s", ui.ControlsLine(a.latestInfo.Playing, a.flashIcon, a.shuffleOn, a.repeatMode))
 }
 
+// noTrackLines are the display lines shown when no track is currently playing.
 var noTrackLines = []string{
 	"No track is currently playing.",
 	"\x1b[2mPress b to browse, or start a track in Music.\x1b[0m",
 }
 
 // handlePollInfo processes a poll result and updates the display.
-func (a *app) handlePollInfo(info *music.TrackInfo) {
+func (a *app) handlePollInfo(info *model.TrackInfo) {
 	if info == nil {
 		if a.currentTrack != "" {
 			a.clearDisplay()
@@ -283,7 +292,7 @@ func (a *app) openBrowse(auto bool) {
 		AutoOpened:      auto,
 	}
 	if a.browseState.AlbumTrackCache == nil {
-		a.browseState.AlbumTrackCache = make(map[string][]music.AlbumTrack)
+		a.browseState.AlbumTrackCache = make(map[string][]model.AlbumTrack)
 	}
 	a.spinnerFrame = 0
 	a.spinnerTicker.Reset(100 * time.Millisecond)
@@ -318,7 +327,7 @@ func (a *app) fetchAlbums() {
 }
 
 // fetchAlbumTracks starts loading tracks for the selected album.
-func (a *app) fetchAlbumTracks(album *music.Album) {
+func (a *app) fetchAlbumTracks(album *model.Album) {
 	if a.browseState.TracksLoading {
 		return
 	}
@@ -332,6 +341,18 @@ func (a *app) fetchAlbumTracks(album *music.Album) {
 	go func() {
 		items, _ := music.ListAlbumTracks(a.ctx, name, artist)
 		a.albumTracksCh <- albumTracksResult{key, items}
+	}()
+}
+
+// fetchCatalog starts a catalog search in the background.
+func (a *app) fetchCatalog(query string) {
+	if a.browseState.CatalogLoading {
+		return
+	}
+	a.browseState.CatalogLoading = true
+	go func() {
+		songs, _ := catalog.Search(a.ctx, query)
+		a.catalogCh <- songs
 	}()
 }
 

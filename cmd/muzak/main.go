@@ -17,13 +17,11 @@ import (
 	"golang.org/x/term"
 )
 
+// out is the terminal output file used for all display writes.
 var out = os.Stdout
 
 // version is set at build time via -ldflags "-X main.version=...".
-var (
-	version = "dev"
-	_       = version
-)
+var version = "dev" //nolint:unused // used via ldflags injection
 
 func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -173,6 +171,20 @@ func (a *app) run() {
 			if a.overlayMode == "browse" {
 				a.drawBrowse()
 			}
+		case songs := <-a.catalogCh:
+			a.browseState.CatalogLoading = false
+			if songs != nil {
+				a.browseState.CatalogResults = songs
+			}
+			if a.overlayMode == "browse" {
+				a.drawBrowse()
+			}
+		case on := <-a.shuffleCh:
+			a.shuffleOn = on
+			a.redrawControls()
+		case mode := <-a.repeatCh:
+			a.repeatMode = mode
+			a.redrawControls()
 		case <-a.winch:
 			a.layout = ui.DetectLayout(os.Stdin.Fd(), out.Fd())
 			a.currentTrack = ""

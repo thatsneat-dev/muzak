@@ -22,9 +22,19 @@
         ...
       }: let
         version = pkgs.lib.fileContents ./VERSION;
+        go = pkgs.go_1_26.overrideAttrs (_: rec {
+          version = "1.26.2";
+          src = pkgs.fetchurl {
+            url = "https://go.dev/dl/go${version}.src.tar.gz";
+            hash = "sha256-LpHrtpR6lulDb7KzkmqIAu/mOm03Xf/sT4Kqnb1v1Ds=";
+          };
+        });
+        buildGoModule = pkgs.buildGoModule.override {
+          inherit go;
+        };
       in {
         packages.default = self'.packages.muzak;
-        packages.muzak = pkgs.buildGoModule {
+        packages.muzak = buildGoModule {
           pname = "muzak";
           inherit version;
           src = pkgs.lib.fileset.toSource {
@@ -56,16 +66,21 @@
         };
 
         devShells = let
-          devPackages = with pkgs; [
-            go
-            just
-            gofumpt
-            gotools
-            golangci-lint
-            alejandra
-            statix
-            deadnix
-          ];
+          devPackages =
+            [
+              go
+            ]
+            ++ (with pkgs; [
+              just
+              gofumpt
+              gotools
+              golangci-lint
+              govulncheck
+              gotestsum
+              alejandra
+              statix
+              deadnix
+            ]);
         in {
           default = pkgs.mkShell {packages = devPackages;};
           bash = pkgs.mkShell {packages = devPackages;};
@@ -77,10 +92,31 @@
           };
         };
 
-        apps.muzak = {
-          type = "app";
-          program = "${self'.packages.muzak}/bin/muzak";
-          meta.description = "Apple Music now-playing terminal widget";
+        apps = let
+          bumpApp = kind: {
+            type = "app";
+            program = toString (pkgs.writeShellScript "bump-${kind}" ''
+              set -euo pipefail
+              IFS='.' read -r major minor patch < VERSION
+              case "${kind}" in
+                patch) patch=$((patch + 1)) ;;
+                minor) minor=$((minor + 1)); patch=0 ;;
+                major) major=$((major + 1)); minor=0; patch=0 ;;
+              esac
+              echo "$major.$minor.$patch" > VERSION
+              echo "v$major.$minor.$patch"
+            '');
+          };
+        in {
+          default = self'.apps.muzak;
+          muzak = {
+            type = "app";
+            program = "${self'.packages.muzak}/bin/muzak";
+            meta.description = "Apple Music now-playing terminal widget";
+          };
+          patch = bumpApp "patch";
+          minor = bumpApp "minor";
+          major = bumpApp "major";
         };
       };
     };
