@@ -107,6 +107,7 @@ jobs:
           OUTCOME_BUILD: ${{ steps.build.outcome }}
           OUTCOME_TESTS: ${{ steps.tests.outcome }}
           OUTCOME_JUNIT: ${{ steps.junit.outcome }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           icon() {
             case "$1" in
@@ -122,8 +123,9 @@ jobs:
             echo "## CI Results"
             echo ""
             echo "**Runner:** \`${{ runner.os }}\` (\`${{ runner.arch }}\`)  "
-            echo "**Commit:** \`${{ github.sha }}\`  "
-            echo "**Trigger:** \`${{ github.event_name }}\` on \`${{ github.ref_name }}\`"
+            echo "**Commit:** \`${{ github.event.pull_request.head.sha || github.sha }}\`  "
+            echo "**Trigger:** \`${{ github.event_name }}\` on \`${{ github.ref_name }}\`  "
+            echo "**Run:** [#${{ github.run_number }}](${RUN_URL})"
             echo ""
             echo "| Stage | Result | Details |"
             echo "| --- | --- | --- |"
@@ -138,4 +140,11 @@ jobs:
             echo "| JUnit report | $(icon "$OUTCOME_JUNIT") | \`test-results.xml\` |"
             echo ""
             echo "_Overall job status: **${{ job.status }}**_"
-          } >> "$GITHUB_STEP_SUMMARY"
+          } | tee -a "$GITHUB_STEP_SUMMARY" > ci-summary.md
+
+      - name: Comment PR with CI summary
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: ci-summary
+          path: ci-summary.md
