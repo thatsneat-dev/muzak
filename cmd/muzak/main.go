@@ -26,7 +26,7 @@ var version = "dev"
 func main() {
 	for _, arg := range os.Args[1:] {
 		if arg == "--version" || arg == "-v" {
-			fmt.Fprintln(out, version)
+			_, _ = fmt.Fprintln(out, version)
 			return
 		}
 	}
