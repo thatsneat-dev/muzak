@@ -22,7 +22,7 @@
         ...
       }: let
         version = pkgs.lib.fileContents ./VERSION;
-        go = pkgs.go;
+        inherit (pkgs) go;
         buildGoModule = pkgs.buildGoModule.override {
           inherit go;
         };
