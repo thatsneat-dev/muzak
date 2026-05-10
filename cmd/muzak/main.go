@@ -21,9 +21,16 @@ import (
 var out = os.Stdout
 
 // version is set at build time via -ldflags "-X main.version=...".
-var version = "dev" //nolint:unused // used via ldflags injection
+var version = "dev"
 
 func main() {
+	for _, arg := range os.Args[1:] {
+		if arg == "--version" || arg == "-v" {
+			fmt.Fprintln(out, version)
+			return
+		}
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
